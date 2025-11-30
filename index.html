@@ -1148,6 +1148,26 @@
         // ========================================
         // Forms
         // ========================================
+        function previewActivityImage(input, previewId) {
+            const previewContainer = document.getElementById(previewId);
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    previewContainer.innerHTML = `
+                        <img src="${e.target.result}" alt="Preview" style="max-width: 100%; max-height: 80px; border-radius: 5px; margin-bottom: 5px;">
+                        <button type="button" onclick="removeActivityImage('${input.id}', '${previewId}')" style="background:none; border:none; color:red; cursor:pointer; font-size:12px;">ลบ</button>
+                    `;
+                };
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        function removeActivityImage(inputId, previewId) {
+            document.getElementById(inputId).value = "";
+            const imgNum = previewId.match(/\d+/)[0];
+            document.getElementById(previewId).innerHTML = `📷 รูปที่ ${imgNum}`;
+        }
+
         function openActivityForm() {
             const content = `
                 <form id="activityFormNew" onsubmit="submitActivityForm(event)">
@@ -1192,6 +1212,21 @@
                         <label>ผู้รายงาน *</label>
                         <input type="text" name="reporter" required placeholder="ชื่อครูผู้รายงาน">
                     </div>
+
+                    <div class="form-group">
+                        <label>📷 รูปภาพกิจกรรม (2 รูป)</label>
+                        <div class="image-upload-grid" style="grid-template-columns: repeat(2, 1fr);">
+                            <div class="image-upload-box" onclick="document.getElementById('activityImg1').click()" style="cursor: pointer;">
+                                <span id="activityImg1Preview">📷 รูปที่ 1</span>
+                                <input type="file" id="activityImg1" name="activityImg1" accept="image/*" style="display: none;" onchange="previewActivityImage(this, 'activityImg1Preview')">
+                            </div>
+                            <div class="image-upload-box" onclick="document.getElementById('activityImg2').click()" style="cursor: pointer;">
+                                <span id="activityImg2Preview">📷 รูปที่ 2</span>
+                                <input type="file" id="activityImg2" name="activityImg2" accept="image/*" style="display: none;" onchange="previewActivityImage(this, 'activityImg2Preview')">
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="form-actions">
                         <button type="button" class="btn-cancel" onclick="document.getElementById('activityFormModal').remove()">ยกเลิก</button>
                         <button type="submit" class="btn-submit">บันทึกกิจกรรม</button>
@@ -1266,6 +1301,13 @@
             const form = event.target;
             const formData = new FormData(form);
             
+            // ✅ Handle image uploads
+            const imageFiles = [
+                form.querySelector('#activityImg1').files[0],
+                form.querySelector('#activityImg2').files[0]
+            ];
+            const imageBase64Strings = await Promise.all(imageFiles.map(file => fileToBase64(file)));
+            
             const activityData = {
                 id: 'ACT_' + Date.now(),
                 date: formData.get('activityDate'),
@@ -1276,7 +1318,7 @@
                 hours: parseInt(formData.get('hours')) || 1,
                 reporter: formData.get('reporter'),
                 attendance: [],
-                images: []
+                images: imageBase64Strings.filter(img => img !== null)
             };
 
             const success = await postData('addActivity', activityData, 'บันทึกกิจกรรมสำเร็จ');
@@ -1285,6 +1327,18 @@
                 setTimeout(() => location.reload(), 1500);
             }
         }
+
+        // ✅ Helper function to convert file to Base64
+        const fileToBase64 = file => new Promise((resolve, reject) => {
+            if (!file) {
+                resolve(null);
+                return;
+            }
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = error => reject(error);
+        });
 
         async function submitStudentForm(event) {
             event.preventDefault();
@@ -1424,6 +1478,17 @@
             const activity = activitiesData.find(a => a.id === activityId);
             if (!activity) return;
             
+            // ✅ Generate image HTML
+            const imagesHtml = (activity.images && activity.images.length > 0) 
+                ? `<div class="image-upload-grid" style="grid-template-columns: repeat(2, 1fr); margin-top: 10px;">
+                    ${activity.images.map((imgSrc, idx) => `
+                        <div style="border: 1px solid #0066cc; border-radius: 8px; overflow: hidden; padding: 5px;">
+                            <img src="${imgSrc}" alt="รูปที่ ${idx + 1}" style="width: 100%; height: auto; border-radius: 6px;">
+                        </div>
+                    `).join('')}
+                </div>`
+                : '<p style="color: #999; font-size: 14px;">ไม่มีรูปภาพสำหรับกิจกรรมนี้</p>';
+            
             const content = `
                 <div class="info-card">
                     <h3>📋 รายละเอียดกิจกรรม</h3>
@@ -1438,6 +1503,11 @@
                         <strong>📄 รายละเอียด:</strong>
                         <div class="description-box">${activity.description}</div>
                     </div>
+                </div>
+                
+                <div class="info-card">
+                    <h3>📷 รูปภาพกิจกรรม</h3>
+                    ${imagesHtml}
                 </div>
             `;
             
