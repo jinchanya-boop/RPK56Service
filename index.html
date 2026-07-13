@@ -2439,7 +2439,13 @@
             
             if (success) {
                 document.getElementById(`checkDetail_${activityId}`).remove();
-                setTimeout(() => location.reload(), 1500);
+                
+                // Update local data and UI without reloading
+                activity.checker = 'ตรวจแล้ว';
+                activity.checkerDate = new Date().toLocaleString('th-TH');
+                activity.checkerSignature = signatureBase64;
+                
+                displayPendingChecks();
             } else {
                 if(btn) {
                     btn.disabled = false;
@@ -2563,7 +2569,15 @@
             
             if (success) {
                 document.getElementById(`approveDetail_${activityId}`).remove();
-                setTimeout(() => location.reload(), 1500);
+                
+                // Update local data and UI without reloading
+                activity.approver = 'นางภิรญา สอนศิริ';
+                activity.approverDate = new Date().toLocaleString('th-TH');
+                activity.approvalStatus = 'ผ่าน';
+                activity.approverComment = comment;
+                activity.approverSignature = signatureBase64;
+                
+                displayPendingApprovals();
             } else {
                 if (btn) { btn.disabled = false; btn.textContent = 'ยืนยันการอนุมัติ'; }
             }
