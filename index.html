@@ -2488,6 +2488,9 @@
 
             await Promise.all(promises);
 
+            // Remove it from body before generating PDF to prevent html2canvas from rendering it off-screen
+            document.body.removeChild(container);
+
             const opt = {
                 margin:       10,
                 filename:     `รายงานกิจกรรม_${activity.name}.pdf`,
@@ -2497,9 +2500,6 @@
             };
 
             await html2pdf().set(opt).from(container).save();
-            
-            // Clean up
-            document.body.removeChild(container);
         }
 
         async function viewActivityDetailForCheck(activityId) {
