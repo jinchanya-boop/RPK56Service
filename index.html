@@ -2547,6 +2547,9 @@
                     <label style="font-weight: 600; margin-bottom: 10px; display: block;">✅ ยืนยันการตรวจสอบ</label>
                     <textarea id="checkNote_${activity.id}" placeholder="หมายเหตุ (ถ้ามี)" style="width: 100%; height: 70px; padding: 10px; border: 1px solid #0066cc; border-radius: 5px; margin-bottom: 15px;"></textarea>
                     
+                    <label style="font-weight: 600; margin-bottom: 10px; display: block;">👤 ชื่อผู้ตรวจสอบ</label>
+                    <input type="text" id="checkerName_${activity.id}" value="นางเบญจพร สักลอ" class="form-control" style="width: 100%; margin-bottom: 15px;">
+                    
                     <label style="font-weight: 600; margin-bottom: 10px; display: block;">✍️ ลายมือชื่อผู้ตรวจสอบ</label>
                     <div style="background: white; border: 2px solid #0066cc; border-radius: 8px; margin-bottom: 10px; overflow: hidden;">
                         <canvas id="signaturePad_${activity.id}" width="400" height="150" style="width: 100%; max-width: 100%; touch-action: none; display: block;"></canvas>
@@ -2695,10 +2698,11 @@
                     return;
                 }
             }
+            const checkerName = document.getElementById(`checkerName_${activityId}`).value.trim() || 'นางเบญจพร สักลอ';
             
             const success = await postData('submitCheck', {
                 activityId,
-                checker: 'ตรวจแล้ว',
+                checker: checkerName,
                 checkerDate: new Date().toLocaleString('th-TH'),
                 signature: signatureBase64
             }, 'ตรวจสอบสำเร็จ');
@@ -2707,7 +2711,7 @@
                 document.getElementById(`checkDetail_${activityId}`).remove();
                 
                 // Update local data and UI without reloading
-                activity.checker = 'ตรวจแล้ว';
+                activity.checker = checkerName;
                 activity.checkerDate = new Date().toLocaleString('th-TH');
                 activity.checkerSignature = signatureBase64;
                 
