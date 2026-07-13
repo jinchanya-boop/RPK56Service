@@ -2457,18 +2457,36 @@
                             ผู้รายงาน
                         </td>
                         <td style="width: 33%; vertical-align: bottom;">
-                            ${activity.checkerSignature ? `<img src="${formatImageSrc(activity.checkerSignature)}" style="max-height: 50px; margin-bottom: 5px;"><br>` : '<br><br><br>'}
+                            ${activity.checkerSignature ? `<img src="${formatImageSrc(activity.checkerSignature)}" style="max-height: 50px; max-width: 150px; object-fit: contain; margin-bottom: 5px;"><br>` : '<br><br><br>'}
                             ( ${activity.checker || '...................................................'} )<br>
                             ผู้ตรวจสอบ
                         </td>
                         <td style="width: 33%; vertical-align: bottom;">
-                            ${activity.approverSignature ? `<img src="${formatImageSrc(activity.approverSignature)}" style="max-height: 50px; margin-bottom: 5px;"><br>` : '<br><br><br>'}
+                            ${activity.approverSignature ? `<img src="${formatImageSrc(activity.approverSignature)}" style="max-height: 50px; max-width: 150px; object-fit: contain; margin-bottom: 5px;"><br>` : '<br><br><br>'}
                             ( ${activity.approver || '...................................................'} )<br>
                             ผู้อนุมัติ
                         </td>
                     </tr>
                 </table>
             `;
+
+            // Append to body temporarily so browser loads images
+            container.style.position = 'absolute';
+            container.style.left = '-9999px';
+            container.style.top = '0';
+            document.body.appendChild(container);
+
+            // Wait for all images to load
+            const images = container.querySelectorAll('img');
+            const promises = Array.from(images).map(img => {
+                if (img.complete) return Promise.resolve();
+                return new Promise(resolve => {
+                    img.onload = resolve;
+                    img.onerror = resolve; // Resolve even on error
+                });
+            });
+
+            await Promise.all(promises);
 
             const opt = {
                 margin:       10,
@@ -2478,7 +2496,10 @@
                 jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
             };
 
-            html2pdf().set(opt).from(container).save();
+            await html2pdf().set(opt).from(container).save();
+            
+            // Clean up
+            document.body.removeChild(container);
         }
 
         async function viewActivityDetailForCheck(activityId) {
