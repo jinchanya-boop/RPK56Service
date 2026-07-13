@@ -1511,7 +1511,7 @@
                 const uploadResult = await postData('uploadImage', {
                     base64: base64,
                     fileName: 'ACT_IMG_' + Date.now() + '_' + (i + 1)
-                }, '');
+                }, '', true);  // silent=true: no alert on failure
                 
                 if (uploadResult && uploadResult.success && uploadResult.url) {
                     imageUrls.push(uploadResult.url);
@@ -1646,7 +1646,7 @@
         // ========================================
         // Utility Functions
         // ========================================
-        async function postData(action, data, successMessage = '') {
+        async function postData(action, data, successMessage = '', silent = false) {
             try {
                 const response = await fetch(API_URL, {
                     method: 'POST',
@@ -1659,11 +1659,11 @@
                     if (successMessage) alert(successMessage);
                     return result;
                 } else {
-                    alert('เกิดข้อผิดพลาด: ' + (result.message || 'Unknown'));
+                    if (!silent) alert('เกิดข้อผิดพลาด: ' + (result.message || 'Unknown'));
                     return null;
                 }
             } catch (error) {
-                alert('Error: ' + error.message);
+                if (!silent) alert('Error: ' + error.message);
                 return null;
             }
         }
@@ -2117,7 +2117,7 @@
             let imagesToRender = activity.images || [];
             if (imagesToRender.length > 0 && imagesToRender[0] === '__LAZY_LOAD__') {
                 // Fetch actual images
-                const result = await postData('getActivityImages', { activityId }, '');
+                const result = await postData('getActivityImages', { activityId }, '', true);
                 if (result && result.success) {
                     imagesToRender = result.images;
                 } else {
@@ -2172,7 +2172,7 @@
             let imagesToRender = activity.images || [];
             if (imagesToRender.length > 0 && imagesToRender[0] === '__LAZY_LOAD__') {
                 // Fetch actual images
-                const result = await postData('getActivityImages', { activityId }, '');
+                const result = await postData('getActivityImages', { activityId }, '', true);
                 if (result && result.success) {
                     imagesToRender = result.images;
                 } else {
