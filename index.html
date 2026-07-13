@@ -1493,12 +1493,32 @@
             const form = event.target;
             const formData = new FormData(form);
             
-            // ✅ Handle image uploads
+            // ✅ Upload images one-by-one FIRST to get Drive URLs
             const imageFiles = [
                 form.querySelector('#activityImg1').files[0],
                 form.querySelector('#activityImg2').files[0]
-            ];
-            const imageBase64Strings = await Promise.all(imageFiles.map(file => fileToBase64(file)));
+            ].filter(f => f);
+            
+            const submitBtn = form.querySelector('button[type="submit"]');
+            if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'กำลังอัปโหลดรูปภาพ...'; }
+            
+            const imageUrls = [];
+            for (let i = 0; i < imageFiles.length; i++) {
+                const file = imageFiles[i];
+                const base64 = await fileToBase64(file);
+                if (!base64) continue;
+                
+                const uploadResult = await postData('uploadImage', {
+                    base64: base64,
+                    fileName: 'ACT_IMG_' + Date.now() + '_' + (i + 1)
+                }, '');
+                
+                if (uploadResult && uploadResult.success && uploadResult.url) {
+                    imageUrls.push(uploadResult.url);
+                }
+            }
+            
+            if (submitBtn) { submitBtn.textContent = 'กำลังบันทึกกิจกรรม...'; }
             
             // Collect checked student IDs
             const attendance = [];
@@ -1525,13 +1545,15 @@
                 hours: parseInt(formData.get('hours')) || 1,
                 reporter: formData.get('reporter'),
                 attendance: attendance,
-                images: imageBase64Strings.filter(img => img !== null)
+                images: imageUrls   // ← Already-uploaded Drive URLs, not base64
             };
 
             const success = await postData('addActivity', activityData, 'บันทึกกิจกรรมสำเร็จ');
             if (success) {
                 document.getElementById('activityFormModal').remove();
                 setTimeout(() => location.reload(), 1500);
+            } else {
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'บันทึกกิจกรรม'; }
             }
         }
 
