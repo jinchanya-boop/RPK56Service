@@ -2293,11 +2293,37 @@
             }, 100);
         }
 
-        function viewActivityDetailForApprove(activityId) {
+        async function viewActivityDetailForApprove(activityId) {
             const activity = activitiesData.find(a => a.id === activityId);
             if (!activity) return;
             
+            // Lazy load images
+            let imagesToRender = activity.images || [];
+            if (imagesToRender.length > 0 && imagesToRender[0] === '__LAZY_LOAD__') {
+                const result = await postData('getActivityImages', { activityId }, '', true);
+                if (result && result.success) imagesToRender = result.images;
+                else imagesToRender = [];
+            }
+            
             const attendanceHtml = generateAttendanceHtml(activity);
+            
+            const imagesHtml = (imagesToRender && imagesToRender.length > 0) 
+                ? `<div class="image-upload-grid" style="grid-template-columns: repeat(2, 1fr); margin-top: 10px;">
+                    ${imagesToRender.map((imgSrc, idx) => `
+                        <div style="border: 1px solid #0066cc; border-radius: 8px; overflow: hidden; padding: 5px;">
+                            <img src="${formatImageSrc(imgSrc)}" alt="รูปที่ ${idx + 1}" style="width: 100%; height: auto; border-radius: 6px;">
+                        </div>
+                    `).join('')}
+                </div>`
+                : '<p style="color: #999; font-size: 14px;">ไม่มีรูปภาพสำหรับกิจกรรมนี้</p>';
+            
+            // Checker signature section
+            const checkerSigHtml = activity.checkerSignature
+                ? `<div style="margin-top: 15px;">
+                    <strong style="display: block; margin-bottom: 8px; font-size: 14px;">✍️ ลายมือชื่อผู้ตรวจสอบ:</strong>
+                    <img src="${formatImageSrc(activity.checkerSignature)}" alt="ลายเซ็นผู้ตรวจสอบ" style="border: 1px solid #ccc; border-radius: 6px; max-height: 100px; background: white; padding: 4px;">
+                   </div>`
+                : '<p style="color: #999; font-size: 13px; margin-top: 10px;">ยังไม่มีลายเซ็นผู้ตรวจสอบ</p>';
             
             const content = `
                 <div class="info-card">
@@ -2305,20 +2331,53 @@
                     <div class="info-grid">
                         <div><strong>📅 วันที่:</strong><span>${new Date(activity.date).toLocaleDateString('th-TH')}</span></div>
                         <div><strong>⏰ ชั่วโมง:</strong><span>${activity.hours || 1} ชม.</span></div>
-                        <div><strong>✅ ตรวจโดย:</strong><span>${activity.checker}</span></div>
+                        <div><strong>🎯 ชั้น:</strong><span>${activity.grade}</span></div>
+                        <div><strong>📍 สถานที่:</strong><span>${activity.location}</span></div>
+                        <div><strong>👤 ผู้รายงาน:</strong><span>${activity.reporter || '-'}</span></div>
+                    </div>
+                    <div style="margin-top: 15px;">
+                        <strong>📄 รายละเอียด:</strong>
+                        <div class="description-box">${activity.description}</div>
                     </div>
                 </div>
                 
                 ${attendanceHtml}
                 
+                <div class="info-card">
+                    <h3>📷 รูปภาพกิจกรรม</h3>
+                    ${imagesHtml}
+                </div>
+                
+                <div class="info-card" style="background: #f0fff4; border-left: 4px solid #28a745;">
+                    <h3 style="color: #155724;">✅ ผลการตรวจสอบ</h3>
+                    <div class="info-grid">
+                        <div><strong>ตรวจสอบโดย:</strong><span>${activity.checker}</span></div>
+                        <div><strong>วันที่ตรวจ:</strong><span>${activity.checkerDate || '-'}</span></div>
+                    </div>
+                    ${checkerSigHtml}
+                </div>
+                
                 <div style="margin-top: 20px; background: #e1f0ff; padding: 15px; border-radius: 10px;">
-                    <label style="font-weight: 600; margin-bottom: 10px; display: block;">🔖 ยืนยันการอนุมัติ</label>
-                    <textarea placeholder="หมายเหตุ (ถ้ามี)" style="width: 100%; height: 70px; padding: 10px; border: 1px solid #0066cc; border-radius: 5px;"></textarea>
-                    <button class="btn btn-success" style="width: 100%; margin-top: 10px;" onclick="submitApproveActivity('${activity.id}')">ยืนยันการอนุมัติ</button>
+                    <label style="font-weight: 600; margin-bottom: 10px; display: block;">🔖 ยืนยันการอนุมัติ — นางภิรญา สอนศิริ (รองผู้อำนวยการโรงเรียน)</label>
+                    <textarea id="approveComment_${activity.id}" placeholder="ผลการอนุมัติ / ข้อคิดเห็น (ถ้ามี)" style="width: 100%; height: 70px; padding: 10px; border: 1px solid #0066cc; border-radius: 5px; margin-bottom: 15px;"></textarea>
+                    
+                    <label style="font-weight: 600; margin-bottom: 10px; display: block;">✍️ ลายมือชื่อผู้อนุมัติ</label>
+                    <div style="background: white; border: 2px solid #0066cc; border-radius: 8px; margin-bottom: 10px; overflow: hidden;">
+                        <canvas id="approveSignaturePad_${activity.id}" width="400" height="150" style="width: 100%; max-width: 100%; touch-action: none; display: block;"></canvas>
+                    </div>
+                    <div style="text-align: right; margin-bottom: 15px;">
+                        <button type="button" class="btn" style="padding: 6px 12px; font-size: 14px; background: #6c757d;" onclick="clearSignature('approveSignaturePad_${activity.id}')">ล้างลายเซ็น</button>
+                    </div>
+                    
+                    <button class="btn btn-success" style="width: 100%;" id="btnSubmitApprove_${activity.id}" onclick="submitApproveActivity('${activity.id}')">ยืนยันการอนุมัติ</button>
                 </div>
             `;
             
             createModal(`approveDetail_${activity.id}`, 'อนุมัติกิจกรรม', content);
+            
+            setTimeout(() => {
+                initSignaturePad(`approveSignaturePad_${activity.id}`);
+            }, 100);
         }
 
         async function submitCheckActivity(activityId) {
@@ -2453,16 +2512,40 @@
             const activity = activitiesData.find(a => a.id === activityId);
             if (!activity) return;
             
+            const btn = document.getElementById(`btnSubmitApprove_${activityId}`);
+            if (btn) { btn.disabled = true; btn.textContent = 'กำลังบันทึก...'; }
+            
+            const canvas = document.getElementById(`approveSignaturePad_${activityId}`);
+            let signatureBase64 = '';
+            if (canvas) {
+                const blankCanvas = document.createElement('canvas');
+                blankCanvas.width = canvas.width;
+                blankCanvas.height = canvas.height;
+                if (canvas.toDataURL() !== blankCanvas.toDataURL()) {
+                    signatureBase64 = canvas.toDataURL('image/png');
+                } else {
+                    alert('กรุณาลงลายมือชื่อก่อนยืนยัน');
+                    if (btn) { btn.disabled = false; btn.textContent = 'ยืนยันการอนุมัติ'; }
+                    return;
+                }
+            }
+            
+            const comment = document.getElementById(`approveComment_${activityId}`)?.value || '';
+            
             const success = await postData('submitApproval', {
                 activityId,
-                approver: 'อนุมัติแล้ว',
+                approver: 'นางภิรญา สอนศิริ',
                 approverDate: new Date().toLocaleString('th-TH'),
-                approvalStatus: 'ผ่าน'
+                approvalStatus: 'ผ่าน',
+                approverComment: comment,
+                signature: signatureBase64
             }, 'อนุมัติสำเร็จ');
             
             if (success) {
                 document.getElementById(`approveDetail_${activityId}`).remove();
                 setTimeout(() => location.reload(), 1500);
+            } else {
+                if (btn) { btn.disabled = false; btn.textContent = 'ยืนยันการอนุมัติ'; }
             }
         }
     </script>
