@@ -1239,7 +1239,7 @@
                             <span>📅 ${new Date(activity.date).toLocaleDateString('th-TH')}</span>
                             <span>✅ ตรวจโดย: ${activity.checker}</span>
                         </div>
-                        <button class="btn btn-success" onclick="viewActivityDetailForApprove('${activity.id}')">อนุมัติและลงนาม</button>
+                        <button class="btn btn-success" id="approveBtn_${activity.id}" onclick="this.disabled=true; this.textContent='กำลังโหลด...'; viewActivityDetailForApprove('${activity.id}').finally(() => { const b = document.getElementById('approveBtn_${activity.id}'); if(b){b.disabled=false; b.textContent='อนุมัติและลงนาม';} })">อนุมัติและลงนาม</button>
                     </div>
                 `).join('')}
             `;
@@ -2120,7 +2120,7 @@
             }
         }
 
-        function generateAttendanceHtml(activity) {
+        function generateAttendanceHtml(activity, showOnlyAbsent = false) {
             if (!activity.attendance || activity.attendance.length === 0) {
                 return `
                     <div class="info-card">
@@ -2133,16 +2133,23 @@
             const presents = activity.attendance.filter(r => r.status === 'present').sort((a, b) => (parseInt(a.number) || 0) - (parseInt(b.number) || 0));
             const absents = activity.attendance.filter(r => r.status === 'absent').sort((a, b) => (parseInt(a.number) || 0) - (parseInt(b.number) || 0));
             
-            return `
-                <div class="info-card">
-                    <h3>👥 รายชื่อนักเรียนเข้าร่วม (${presents.length}/${activity.attendance.length} คน)</h3>
-                    <div style="margin-top: 10px;">
+            let presentsHtml = '';
+            if (!showOnlyAbsent) {
+                presentsHtml = `
                         <strong style="color: #28a745; font-size: 14px; display: block; margin-bottom: 5px;">✓ เข้าร่วม (${presents.length} คน):</strong>
                         ${presents.length > 0 ? `
                         <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; margin-bottom: 15px; max-height: 150px; overflow-y: auto; padding: 5px; background: #f4fbf7; border: 1px solid #d4edda; border-radius: 6px;">
                             ${presents.map(p => `<span style="font-size: 13px; color: #155724;">✅ เลขที่ ${p.number}. ${p.name}</span>`).join('')}
                         </div>
-                        ` : '<p style="color: #999; font-size: 13px; padding-left: 5px;">ไม่มี</p>'}
+                        ` : '<p style="color: #999; font-size: 13px; padding-left: 5px; margin-bottom: 15px;">ไม่มี</p>'}
+                `;
+            }
+            
+            return `
+                <div class="info-card">
+                    <h3>👥 รายชื่อนักเรียนเข้าร่วม (${presents.length}/${activity.attendance.length} คน)</h3>
+                    <div style="margin-top: 10px;">
+                        ${presentsHtml}
                         
                         <strong style="color: #dc3545; font-size: 14px; display: block; margin-bottom: 5px;">✗ ไม่เข้าร่วม (${absents.length} คน):</strong>
                         ${absents.length > 0 ? `
@@ -2305,7 +2312,7 @@
                 else imagesToRender = [];
             }
             
-            const attendanceHtml = generateAttendanceHtml(activity);
+            const attendanceHtml = generateAttendanceHtml(activity, true);
             
             const imagesHtml = (imagesToRender && imagesToRender.length > 0) 
                 ? `<div class="image-upload-grid" style="grid-template-columns: repeat(2, 1fr); margin-top: 10px;">
