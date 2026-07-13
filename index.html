@@ -1089,14 +1089,21 @@
             }
             
             container.innerHTML = filteredActivities.slice().reverse().map(activity => `
-                <div class="data-item" onclick="viewActivityDetail('${activity.id}')">
-                    <h3>${activity.name}</h3>
-                    <div class="data-meta">
-                        <span>📅 ${new Date(activity.date).toLocaleDateString('th-TH')}</span>
-                        <span>⏰ ${activity.hours || 1} ชั่วโมง</span>
-                        <span>🎯 ${activity.grade}</span>
-                        <span>📍 ${activity.location}</span>
+                <div class="data-item" onclick="viewActivityDetail('${activity.id}')" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 250px;">
+                        <h3>${activity.name}</h3>
+                        <div class="data-meta">
+                            <span>📅 ${new Date(activity.date).toLocaleDateString('th-TH')}</span>
+                            <span>⏰ ${activity.hours || 1} ชั่วโมง</span>
+                            <span>🎯 ${activity.grade}</span>
+                            <span>📍 ${activity.location}</span>
+                        </div>
                     </div>
+                    ${activity.approvalStatus === 'ผ่าน' ? `
+                        <button class="btn btn-primary" onclick="event.stopPropagation(); generateActivityPDF('${activity.id}')" style="background: linear-gradient(135deg, #28a745 0%, #218838 100%); font-size: 14px; padding: 8px 15px; border-radius: 8px; margin-top: 10px; white-space: nowrap;">
+                            📄 ดาวน์โหลด PDF
+                        </button>
+                    ` : ''}
                 </div>
             `).join('');
         }
@@ -2384,8 +2391,9 @@
             container.style.background = '#fff';
             container.style.width = '800px';
 
-            const presents = (activity.attendance || []).filter(r => r.status === 'present').sort((a, b) => parseInt(a.number) - parseInt(b.number));
             const absents = (activity.attendance || []).filter(r => r.status === 'absent').sort((a, b) => parseInt(a.number) - parseInt(b.number));
+            const totalStudents = (activity.attendance || []).length;
+            const presentsCount = totalStudents - absents.length;
 
             const imagesHtml = (imagesToRender && imagesToRender.length > 0) 
                 ? `<div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
@@ -2430,10 +2438,9 @@
                 </div>
 
                 <div style="margin-bottom: 20px; font-size: 16px;">
-                    <strong>ข้อมูลการเข้าร่วม (${presents.length}/${(activity.attendance||[]).length} คน):</strong>
+                    <strong>ข้อมูลการเข้าร่วม (${presentsCount}/${totalStudents} คน):</strong>
                     <div style="margin-top: 10px; padding-left: 20px; font-size: 14px; color: #333; line-height: 1.6;">
-                        <strong>ผู้เข้าร่วม:</strong> ${presents.length > 0 ? presents.map(p => `เลขที่ ${p.number} ${p.name}`).join(', ') : '-'}<br><br>
-                        <strong>ผู้ไม่เข้าร่วม (ขาด/ลา):</strong> ${absents.length > 0 ? absents.map(a => `เลขที่ ${a.number} ${a.name}`).join(', ') : '-'}
+                        <strong>ผู้ไม่เข้าร่วม (ขาด/ลา):</strong> ${absents.length > 0 ? absents.map(a => `เลขที่ ${a.number} ${a.name}`).join(', ') : 'ไม่มี (เข้าร่วมครบทุกคน)'}
                     </div>
                 </div>
 
@@ -2442,7 +2449,7 @@
                     ${imagesHtml}
                 </div>
 
-                <table style="width: 100%; text-align: center; margin-top: 60px; font-size: 16px;">
+                <table style="width: 100%; text-align: center; margin-top: 50px; font-size: 16px; page-break-inside: avoid;">
                     <tr>
                         <td style="width: 33%; vertical-align: bottom;">
                             <br><br><br>
