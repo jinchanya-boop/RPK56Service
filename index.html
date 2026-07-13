@@ -1524,18 +1524,19 @@
                 const base64 = await fileToBase64(file);
                 if (!base64) continue;
                 
-                // Try to upload to Drive first
+                // ✅ Compress image FIRST (reduce to max 800px, 60% quality)
+                const compressed = await compressImageBase64(base64, 0.6, 800);
+                
+                // Try to upload compressed image to Drive
                 const uploadResult = await postData('uploadImage', {
-                    base64: base64,
+                    base64: compressed,
                     fileName: 'ACT_IMG_' + Date.now() + '_' + (i + 1)
-                }, '', true);  // silent=true: no alert on failure
+                }, '', true);
                 
                 if (uploadResult && uploadResult.success && uploadResult.url) {
-                    // Got a Drive URL — use it
-                    imageUrls.push(uploadResult.url);
+                    imageUrls.push(uploadResult.url);  // Drive URL
                 } else {
-                    // Fallback: compress and keep base64 (GAS may not be re-deployed yet)
-                    const compressed = await compressImageBase64(base64, 0.6);
+                    // Fallback: send compressed base64 in addActivity (GAS will try Drive upload or store directly)
                     imageUrls.push(compressed);
                 }
             }
