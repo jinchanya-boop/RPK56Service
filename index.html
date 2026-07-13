@@ -1128,7 +1128,15 @@
                 </div>
             `;
             createModal('checkerLoginModal', 'เข้าสู่ระบบผู้ตรวจสอบ', content, '400px');
-            setTimeout(() => document.getElementById('loginPassword').focus(), 100);
+            setTimeout(() => {
+                const input = document.getElementById('loginPassword');
+                if (input) {
+                    input.focus();
+                    input.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter') verifyCheckerLogin();
+                    });
+                }
+            }, 100);
         }
 
         function showApproverLoginModal() {
@@ -1146,7 +1154,15 @@
                 </div>
             `;
             createModal('approverLoginModal', 'เข้าสู่ระบบผู้อนุมัติ', content, '400px');
-            setTimeout(() => document.getElementById('loginPassword').focus(), 100);
+            setTimeout(() => {
+                const input = document.getElementById('loginPassword');
+                if (input) {
+                    input.focus();
+                    input.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter') verifyApproverLogin();
+                    });
+                }
+            }, 100);
         }
 
         function verifyCheckerLogin() {
@@ -1196,7 +1212,7 @@
                             <span>🎯 ${activity.grade}</span>
                             <span>👤 ผู้รายงาน: ${activity.reporter || '-'}</span>
                         </div>
-                        <button class="btn btn-success" onclick="viewActivityDetailForCheck('${activity.id}')">ตรวจสอบและลงนาม</button>
+                        <button class="btn btn-success" id="checkBtn_${activity.id}" onclick="this.disabled=true; this.textContent='กำลังโหลด...'; viewActivityDetailForCheck('${activity.id}').finally(() => { const b = document.getElementById('checkBtn_${activity.id}'); if(b){b.disabled=false; b.textContent='ตรวจสอบและลงนาม';} })">ตรวจสอบและลงนาม</button>
                     </div>
                 `).join('')}
             `;
@@ -1508,13 +1524,19 @@
                 const base64 = await fileToBase64(file);
                 if (!base64) continue;
                 
+                // Try to upload to Drive first
                 const uploadResult = await postData('uploadImage', {
                     base64: base64,
                     fileName: 'ACT_IMG_' + Date.now() + '_' + (i + 1)
                 }, '', true);  // silent=true: no alert on failure
                 
                 if (uploadResult && uploadResult.success && uploadResult.url) {
+                    // Got a Drive URL — use it
                     imageUrls.push(uploadResult.url);
+                } else {
+                    // Fallback: compress and keep base64 (GAS may not be re-deployed yet)
+                    const compressed = await compressImageBase64(base64, 0.6);
+                    imageUrls.push(compressed);
                 }
             }
             
@@ -1604,6 +1626,28 @@
             reader.onload = () => resolve(reader.result);
             reader.onerror = error => reject(error);
         });
+
+        // ✅ Helper to compress image Base64 to reduce payload size
+        function compressImageBase64(base64, quality = 0.6, maxWidth = 800) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let { width, height } = img;
+                    if (width > maxWidth) {
+                        height = Math.round((height * maxWidth) / width);
+                        width = maxWidth;
+                    }
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', quality));
+                };
+                img.onerror = () => resolve(base64); // fallback to original
+                img.src = base64;
+            });
+        }
 
         async function submitStudentForm(event) {
             event.preventDefault();
@@ -2116,8 +2160,18 @@
             
             let imagesToRender = activity.images || [];
             if (imagesToRender.length > 0 && imagesToRender[0] === '__LAZY_LOAD__') {
-                // Fetch actual images
+                const loadingId = 'imgLoading_' + activityId;
+                const existingModal = document.querySelector('.modal-content');
+                const loadingDiv = document.createElement('div');
+                loadingDiv.id = loadingId;
+                loadingDiv.style.cssText = 'text-align:center; padding: 20px; color: #0066cc; font-size: 14px;';
+                loadingDiv.innerHTML = '<span style="animation: spin 1s linear infinite; display:inline-block; font-size:20px;">⏳</span> กำลังโหลดรูปภาพ...';
+                if (existingModal) existingModal.appendChild(loadingDiv);
+                
                 const result = await postData('getActivityImages', { activityId }, '', true);
+                const ld = document.getElementById(loadingId);
+                if (ld) ld.remove();
+                
                 if (result && result.success) {
                     imagesToRender = result.images;
                 } else {
