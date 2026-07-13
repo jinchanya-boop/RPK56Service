@@ -7,6 +7,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <style>
         /* ======================================== */
         /* Global Styles & Resets */
@@ -2343,9 +2344,134 @@
                     <h3>📷 รูปภาพกิจกรรม</h3>
                     ${imagesHtml}
                 </div>
+                
+                ${activity.approvalStatus === 'ผ่าน' ? `
+                <div style="text-align: center; margin-top: 20px;">
+                    <button class="btn btn-primary" onclick="generateActivityPDF('${activity.id}')" style="width: 100%; font-size: 16px; padding: 15px; background: linear-gradient(135deg, #28a745 0%, #218838 100%);">
+                        📄 ดาวน์โหลดรายงาน PDF
+                    </button>
+                </div>
+                ` : ''}
             `;
             
             createModal(`activityDetail_${activity.id}`, `กิจกรรมบำเพ็ญประโยชน์: ${activity.name}`, content);
+        }
+
+        async function generateActivityPDF(activityId) {
+            const activity = activitiesData.find(a => a.id === activityId);
+            if (!activity) return;
+
+            // Load images if they are lazy loaded
+            let imagesToRender = activity.images || [];
+            if (imagesToRender.length > 0 && imagesToRender[0] === '__LAZY_LOAD__') {
+                const btn = event.currentTarget;
+                const oldText = btn.innerHTML;
+                btn.innerHTML = '⏳ กำลังเตรียมรูปภาพ...';
+                btn.disabled = true;
+                
+                const result = await postData('getActivityImages', { activityId }, '', true);
+                if (result && result.success) imagesToRender = result.images;
+                else imagesToRender = [];
+                
+                btn.innerHTML = oldText;
+                btn.disabled = false;
+            }
+
+            const container = document.createElement('div');
+            container.style.padding = '30px';
+            container.style.fontFamily = "'Sarabun', sans-serif";
+            container.style.color = '#000';
+            container.style.background = '#fff';
+            container.style.width = '800px';
+
+            const presents = (activity.attendance || []).filter(r => r.status === 'present').sort((a, b) => parseInt(a.number) - parseInt(b.number));
+            const absents = (activity.attendance || []).filter(r => r.status === 'absent').sort((a, b) => parseInt(a.number) - parseInt(b.number));
+
+            const imagesHtml = (imagesToRender && imagesToRender.length > 0) 
+                ? `<div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                    ${imagesToRender.map((imgSrc, idx) => `
+                        <img src="${formatImageSrc(imgSrc)}" style="max-width: 45%; max-height: 250px; object-fit: contain; border: 1px solid #ccc; padding: 5px;">
+                    `).join('')}
+                </div>`
+                : '<p style="color: #666; font-size: 14px;">ไม่มีรูปภาพ</p>';
+
+            container.innerHTML = `
+                <div style="text-align: center; margin-bottom: 30px;">
+                    <h2 style="font-size: 26px; margin-bottom: 5px;">รายงานกิจกรรมบำเพ็ญประโยชน์</h2>
+                    <h3 style="font-size: 20px; font-weight: normal;">โรงเรียนราชประชานุเคราะห์ 56 จังหวัดน่าน</h3>
+                </div>
+                
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 16px; line-height: 1.8;">
+                    <tr>
+                        <td style="padding: 5px; width: 25%;"><strong>ชื่อกิจกรรม:</strong></td>
+                        <td style="padding: 5px; width: 75%; border-bottom: 1px dotted #ccc;">${activity.name}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px;"><strong>วันที่จัดกิจกรรม:</strong></td>
+                        <td style="padding: 5px; border-bottom: 1px dotted #ccc;">${new Date(activity.date).toLocaleDateString('th-TH', {year: 'numeric', month: 'long', day: 'numeric'})}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px;"><strong>ระดับชั้น:</strong></td>
+                        <td style="padding: 5px; border-bottom: 1px dotted #ccc;">${activity.grade}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px;"><strong>สถานที่:</strong></td>
+                        <td style="padding: 5px; border-bottom: 1px dotted #ccc;">${activity.location}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px;"><strong>ระยะเวลา:</strong></td>
+                        <td style="padding: 5px; border-bottom: 1px dotted #ccc;">${activity.hours || 1} ชั่วโมง</td>
+                    </tr>
+                </table>
+
+                <div style="margin-bottom: 20px; font-size: 16px;">
+                    <strong>รายละเอียดกิจกรรม:</strong>
+                    <p style="margin-top: 5px; padding-left: 20px; text-indent: 30px;">${activity.description}</p>
+                </div>
+
+                <div style="margin-bottom: 20px; font-size: 16px;">
+                    <strong>ข้อมูลการเข้าร่วม (${presents.length}/${(activity.attendance||[]).length} คน):</strong>
+                    <div style="margin-top: 10px; padding-left: 20px; font-size: 14px; color: #333; line-height: 1.6;">
+                        <strong>ผู้เข้าร่วม:</strong> ${presents.length > 0 ? presents.map(p => `เลขที่ ${p.number} ${p.name}`).join(', ') : '-'}<br><br>
+                        <strong>ผู้ไม่เข้าร่วม (ขาด/ลา):</strong> ${absents.length > 0 ? absents.map(a => `เลขที่ ${a.number} ${a.name}`).join(', ') : '-'}
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 30px;">
+                    <strong>ภาพถ่ายกิจกรรม:</strong>
+                    ${imagesHtml}
+                </div>
+
+                <table style="width: 100%; text-align: center; margin-top: 60px; font-size: 16px;">
+                    <tr>
+                        <td style="width: 33%; vertical-align: bottom;">
+                            <br><br><br>
+                            ( ${activity.reporter || '...................................................'} )<br>
+                            ผู้รายงาน
+                        </td>
+                        <td style="width: 33%; vertical-align: bottom;">
+                            ${activity.checkerSignature ? `<img src="${formatImageSrc(activity.checkerSignature)}" style="max-height: 50px; margin-bottom: 5px;"><br>` : '<br><br><br>'}
+                            ( ${activity.checker || '...................................................'} )<br>
+                            ผู้ตรวจสอบ
+                        </td>
+                        <td style="width: 33%; vertical-align: bottom;">
+                            ${activity.approverSignature ? `<img src="${formatImageSrc(activity.approverSignature)}" style="max-height: 50px; margin-bottom: 5px;"><br>` : '<br><br><br>'}
+                            ( ${activity.approver || '...................................................'} )<br>
+                            ผู้อนุมัติ
+                        </td>
+                    </tr>
+                </table>
+            `;
+
+            const opt = {
+                margin:       10,
+                filename:     `รายงานกิจกรรม_${activity.name}.pdf`,
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 2, useCORS: true },
+                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+
+            html2pdf().set(opt).from(container).save();
         }
 
         async function viewActivityDetailForCheck(activityId) {
