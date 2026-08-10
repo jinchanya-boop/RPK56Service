@@ -1881,12 +1881,20 @@
 
         function formatImageSrc(src) {
             if (!src) return '';
+            
+            let fileId = null;
             if (src.includes('drive.google.com/file/d/')) {
                 const match = src.match(/file\/d\/([a-zA-Z0-9_-]+)/);
-                if (match && match[1]) {
-                    return 'https://drive.google.com/uc?export=view&id=' + match[1];
-                }
+                if (match && match[1]) fileId = match[1];
+            } else if (src.includes('drive.google.com/uc?') || src.includes('drive.google.com/open?')) {
+                const match = src.match(/id=([a-zA-Z0-9_-]+)/);
+                if (match && match[1]) fileId = match[1];
             }
+            
+            if (fileId) {
+                return 'https://drive.google.com/thumbnail?id=' + fileId + '&sz=w1000';
+            }
+            
             return src;
         }
 
