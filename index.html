@@ -756,29 +756,145 @@
         // ========================================
         // Initialize App
         // ========================================
+        // ✅ รอให้สคริปต์ทั้งไฟล์ถูกอ่านครบก่อน แล้วค่อยเริ่มระบบ
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initializeApp);
+            document.addEventListener('DOMContentLoaded', () => setTimeout(initializeApp, 0));
         } else {
-            initializeApp();
+            setTimeout(initializeApp, 0);
         }
 
+        // ✅ เปิดเร็ว: แสดงข้อมูลชุดล่าสุดที่เก็บไว้ในเครื่องทันที แล้วค่อยดึงข้อมูลใหม่จากเซิร์ฟเวอร์เบื้องหลัง
         async function initializeApp() {
+            const navTabs = document.querySelectorAll('.nav-tab');
+            navTabs.forEach(tab => {
+                tab.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    const tabName = tab.getAttribute('data-tab');
+                    showTab(event, tabName);
+                });
+            });
+
+            const hadCache = loadDataFromCache();
+            if (hadCache) {
+                refreshActiveTab();
+                showSyncBadge('🔄 กำลังอัปเดตข้อมูลล่าสุด...');
+            }
+
             try {
                 await loadData(true);
-                loadDashboard();
-                
-                const navTabs = document.querySelectorAll('.nav-tab');
-                navTabs.forEach(tab => {
-                    tab.addEventListener('click', (event) => {
-                        event.preventDefault();
-                        const tabName = tab.getAttribute('data-tab');
-                        showTab(event, tabName);
-                    });
-                });
+                refreshActiveTab();
+                hideSyncBadge();
             } catch (error) {
                 console.error('Error:', error);
-                alert('เกิดข้อผิดพลาด: ' + error.message);
+                if (hadCache) {
+                    showSyncBadge('⚠️ เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ — แสดงข้อมูลชุดล่าสุดที่บันทึกไว้', true);
+                } else {
+                    alert('เกิดข้อผิดพลาด: ' + error.message);
+                }
             }
+        }
+
+        // ========================================
+        // Local Cache (แบบเดียวกับระบบลูกเสือ)
+        // ========================================
+        const LOCAL_CACHE_KEY = 'rpk56_service_data_v1';
+
+        function saveDataToCache(data) {
+            try {
+                const light = {
+                    savedAt: Date.now(),
+                    students: data.students || [],
+                    teachers: data.teachers || [],
+                    // ตัดลายเซ็น/รูปที่เป็น base64 ยาวๆ ออก เพื่อไม่ให้เกินพื้นที่ 5MB ของเบราว์เซอร์
+                    activities: (data.activities || []).map(a => ({
+                        ...a,
+                        checkerSignature: String(a.checkerSignature || '').length > 1500 ? '' : a.checkerSignature,
+                        approverSignature: String(a.approverSignature || '').length > 1500 ? '' : a.approverSignature,
+                        images: Array.isArray(a.images)
+                            ? a.images.map(img => String(img).length > 1500 ? '__LAZY_LOAD__' : img)
+                            : a.images
+                    }))
+                };
+                localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(light));
+            } catch (e) {
+                console.warn('บันทึกแคชไม่สำเร็จ:', e);
+            }
+        }
+
+        function loadDataFromCache() {
+            try {
+                const raw = localStorage.getItem(LOCAL_CACHE_KEY);
+                if (!raw) return false;
+                applyLoadedData(JSON.parse(raw));
+                return studentsData.length > 0 || activitiesData.length > 0;
+            } catch (e) {
+                console.warn('อ่านแคชไม่สำเร็จ:', e);
+                return false;
+            }
+        }
+
+        function applyLoadedData(data) {
+            studentsData = data.students || [];
+            activitiesData = (data.activities || []).map(activity => {
+                let attendance = [];
+                let images = [];
+                if (activity.attendance) {
+                    try {
+                        attendance = typeof activity.attendance === 'string' ?
+                            JSON.parse(activity.attendance) : activity.attendance;
+                    } catch (e) {}
+                }
+                if (activity.images) {
+                    try {
+                        images = typeof activity.images === 'string' ?
+                            JSON.parse(activity.images) : activity.images;
+                    } catch (e) {}
+                }
+                return { ...activity, attendance, images };
+            });
+            teachersData = data.teachers || [];
+        }
+
+        // วาดแท็บที่เปิดอยู่ใหม่ (ไม่เปิดหน้าต่างล็อกอินซ้ำ)
+        function refreshActiveTab() {
+            const activeBtn = document.querySelector('.nav-tab.active');
+            const tabName = activeBtn ? activeBtn.getAttribute('data-tab') : 'dashboard';
+            try {
+                switch (tabName) {
+                    case 'dashboard': loadDashboard(); break;
+                    case 'activities': loadActivities(); break;
+                    case 'reports': loadReports(); break;
+                    case 'teacher-report': loadTeacherReport(); break;
+                    case 'students': if (isAdminLoggedIn) loadStudents(); break;
+                    case 'teachers': if (isAdminLoggedIn) loadTeachers(); break;
+                    case 'checker':
+                        if (isSessionActive && currentUser && currentUser.type === 'checker') displayPendingChecks();
+                        break;
+                    case 'approval':
+                        if (isSessionActive && currentUser && currentUser.type === 'approver') displayPendingApprovals();
+                        break;
+                }
+            } catch (e) {
+                console.error('refreshActiveTab:', e);
+            }
+        }
+
+        function showSyncBadge(text, isWarning = false) {
+            let el = document.getElementById('syncBadge');
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'syncBadge';
+                el.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:3000;padding:10px 16px;border-radius:20px;font-family:Sarabun,sans-serif;font-size:14px;color:white;box-shadow:0 4px 12px rgba(0,0,0,0.2);';
+                document.body.appendChild(el);
+            }
+            el.style.background = isWarning ? '#e67e22' : '#0066cc';
+            el.textContent = text;
+            el.style.display = 'block';
+        }
+
+        function hideSyncBadge() {
+            const el = document.getElementById('syncBadge');
+            if (el) el.style.display = 'none';
         }
 
         // ========================================
@@ -792,25 +908,8 @@
                 const callbackName = 'jsonpCallback_' + Date.now();
                 
                 window[callbackName] = function(data) {
-                    studentsData = data.students || [];
-                    activitiesData = (data.activities || []).map(activity => {
-                        let attendance = [];
-                        let images = [];
-                        if (activity.attendance) {
-                            try {
-                                attendance = typeof activity.attendance === 'string' ? 
-                                    JSON.parse(activity.attendance) : activity.attendance;
-                            } catch (e) {}
-                        }
-                        if (activity.images) {
-                            try {
-                                images = typeof activity.images === 'string' ? 
-                                    JSON.parse(activity.images) : activity.images;
-                            } catch (e) {}
-                        }
-                        return { ...activity, attendance, images };
-                    });
-                    teachersData = data.teachers || [];
+                    applyLoadedData(data);
+                    saveDataToCache(data);
                     
                     resolve();
                     script.remove();
@@ -1056,8 +1155,17 @@
             return n > 0 ? n : 1;
         }
 
+        // ✅ ถือว่า "อนุมัติแล้ว" ตามเกณฑ์เดียวกับแท็บอนุมัติ:
+        //    มีชื่อผู้อนุมัติแล้ว และสถานะไม่ใช่ "ไม่ผ่าน" (หรือสถานะเป็น "ผ่าน")
+        //    เดิมเช็คเฉพาะช่องสถานะ ทำให้รายงานที่อนุมัติแล้วแต่ช่องสถานะว่าง/สะกดต่าง ไม่ถูกนับ
+        function isActivityRejected(activity) {
+            return String(activity.approvalStatus || '').trim() === 'ไม่ผ่าน';
+        }
+
         function isActivityApproved(activity) {
-            return String(activity.approvalStatus || '').trim() === 'ผ่าน';
+            if (isActivityRejected(activity)) return false;
+            return String(activity.approvalStatus || '').trim() === 'ผ่าน' ||
+                   String(activity.approver || '').trim() !== '';
         }
 
         // ✅ แก้ไขการนับชั่วโมง
@@ -1073,7 +1181,7 @@
                 return String(student.grade || '').trim().startsWith('ม.');
             }).map((student, index) => {
                 const sid = String(student.id).trim();
-                let hours = 0, pendingHours = 0, activityCount = 0;
+                let hours = 0, pendingCheckHours = 0, pendingApproveHours = 0, activityCount = 0;
                 const counted = new Set();
 
                 activitiesData.forEach(activity => {
@@ -1086,17 +1194,23 @@
                     if (isActivityApproved(activity)) {
                         hours += h;
                         activityCount++;
-                    } else if (String(activity.approvalStatus || '').trim() !== 'ไม่ผ่าน') {
-                        pendingHours += h;   // ยังไม่อนุมัติ
+                    } else if (!isActivityRejected(activity)) {
+                        if (String(activity.checker || '').trim() === '') {
+                            pendingCheckHours += h;     // ยังไม่ผ่านผู้ตรวจสอบ (จะยังไม่ขึ้นในแท็บอนุมัติ)
+                        } else {
+                            pendingApproveHours += h;   // ตรวจแล้ว รอผู้อนุมัติ
+                        }
                     }
                 });
 
                 hours = Math.round(hours * 100) / 100;
-                pendingHours = Math.round(pendingHours * 100) / 100;
+                pendingCheckHours = Math.round(pendingCheckHours * 100) / 100;
+                pendingApproveHours = Math.round(pendingApproveHours * 100) / 100;
+                const pendingHours = pendingCheckHours + pendingApproveHours;
                 const percentage = Math.min(100, Math.round((hours / HOURS_TARGET) * 100));
                 const status = hours >= HOURS_TARGET ? 'ผ่าน' : 'ยังไม่ผ่าน';
                 
-                return { ...student, hours, pendingHours, activityCount, percentage, status, index: index + 1 };
+                return { ...student, hours, pendingHours, pendingCheckHours, pendingApproveHours, activityCount, percentage, status, index: index + 1 };
             });
         }
 
@@ -1482,6 +1596,31 @@
                     card('linear-gradient(135deg, #dc3545 0%, #c0392b 100%)', 'rgba(220,53,69,0.3)', `❌ ยังไม่ผ่าน (&lt; ${HOURS_TARGET} ชม.)`, failed, `คน (${pct(failed)}%) — คลิกดูรายชื่อ`, 'cursor: pointer;" onclick="showDashboardStudents(\'failed\')') +
                     card('linear-gradient(135deg, #6f42c1 0%, #5a32a3 100%)', 'rgba(111,66,193,0.3)', '⏱️ ชั่วโมงเฉลี่ย', avgHours, 'ชม./คน');
             }
+
+            // ✅ แจ้งจำนวนกิจกรรมที่ยังไม่ถูกนับชั่วโมง พร้อมบอกว่าค้างอยู่ขั้นไหน
+            const noticeId = 'reportPendingNotice';
+            let notice = document.getElementById(noticeId);
+            if (!notice && summaryEl) {
+                notice = document.createElement('div');
+                notice.id = noticeId;
+                summaryEl.parentNode.insertBefore(notice, summaryEl.nextSibling);
+            }
+            if (notice) {
+                const inScope = activitiesData.filter(a => gradeFilter === 'all' || String(a.grade || '').trim() === gradeFilter.trim());
+                const waitCheck = inScope.filter(a => !isActivityApproved(a) && !isActivityRejected(a) && !String(a.checker || '').trim());
+                const waitApprove = inScope.filter(a => !isActivityApproved(a) && !isActivityRejected(a) && String(a.checker || '').trim());
+                if (waitCheck.length + waitApprove.length === 0) {
+                    notice.innerHTML = '';
+                } else {
+                    const list = arr => arr.map(a => `${a.name} (${a.grade}, ${new Date(a.date).toLocaleDateString('th-TH')})`).join(', ');
+                    notice.innerHTML = `
+                        <div style="background: #fff8e6; border-left: 4px solid #e67e22; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-size: 14px; line-height: 1.7;">
+                            <strong>ℹ️ ชั่วโมงที่ยังไม่ถูกนับ:</strong>
+                            ${waitCheck.length ? `<div>🟠 รอผู้ตรวจสอบ ${waitCheck.length} กิจกรรม (ยังไม่ขึ้นในแท็บอนุมัติจนกว่าจะตรวจ): ${list(waitCheck)}</div>` : ''}
+                            ${waitApprove.length ? `<div>🟣 รอผู้อนุมัติ ${waitApprove.length} กิจกรรม: ${list(waitApprove)}</div>` : ''}
+                        </div>`;
+                }
+            }
             
             if (reportData.length === 0) {
                 container.innerHTML = '<tr><td colspan="6" class="loading-placeholder">ไม่มีข้อมูลสำหรับห้องเรียนนี้</td></tr>';
@@ -1495,7 +1634,8 @@
                     <td>${s.grade}</td>
                     <td class="text-center" style="color: #0066cc; font-weight: 600;">
                         ${s.hours} ชม.
-                        ${s.pendingHours > 0 ? `<div style="font-size: 11px; color: #e67e22; font-weight: 400;">+${s.pendingHours} ชม. รออนุมัติ</div>` : ''}
+                        ${s.pendingCheckHours > 0 ? `<div style="font-size: 11px; color: #e67e22; font-weight: 400;">+${s.pendingCheckHours} ชม. รอผู้ตรวจสอบ</div>` : ''}
+                        ${s.pendingApproveHours > 0 ? `<div style="font-size: 11px; color: #8e44ad; font-weight: 400;">+${s.pendingApproveHours} ชม. รอผู้อนุมัติ</div>` : ''}
                     </td>
                     <td class="text-center"><strong>${s.percentage}%</strong></td>
                     <td class="text-center">
