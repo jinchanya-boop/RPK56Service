@@ -568,11 +568,11 @@
                         <div class="number" id="totalWeeks">0</div>
                     </div>
                     <div class="card clickable" onclick="showDashboardStudents('passed')">
-                        <h3>✅ นักเรียนผ่าน (≥20 ชม.)</h3>
+                        <h3>✅ นักเรียนผ่าน (≥16 ชม.)</h3>
                         <div class="number" id="passedStudents">0</div>
                     </div>
                     <div class="card clickable" onclick="showDashboardStudents('failed')">
-                        <h3>❌ นักเรียนไม่ผ่าน (<20 ชม.)</h3>
+                        <h3>❌ นักเรียนไม่ผ่าน (<16 ชม.)</h3>
                         <div class="number" id="failedStudents">0</div>
                     </div>
                 </div>
@@ -638,8 +638,6 @@
                         <button class="btn btn-primary" onclick="generateAttendancePDFReport()" style="background: #28a745; color: white;">🖨️ ส่งออก PDF รายงานผล</button>
                     </div>
                 </div>
-                <!-- ✅ สรุปจำนวนผ่าน/ไม่ผ่าน (แบบเดียวกับระบบลูกเสือ) -->
-                <div id="reportSummaryCards" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 20px;"></div>
                 <div class="data-table-container">
                     <table class="data-table">
                         <thead>
@@ -756,145 +754,29 @@
         // ========================================
         // Initialize App
         // ========================================
-        // ✅ รอให้สคริปต์ทั้งไฟล์ถูกอ่านครบก่อน แล้วค่อยเริ่มระบบ
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', () => setTimeout(initializeApp, 0));
+            document.addEventListener('DOMContentLoaded', initializeApp);
         } else {
-            setTimeout(initializeApp, 0);
+            initializeApp();
         }
 
-        // ✅ เปิดเร็ว: แสดงข้อมูลชุดล่าสุดที่เก็บไว้ในเครื่องทันที แล้วค่อยดึงข้อมูลใหม่จากเซิร์ฟเวอร์เบื้องหลัง
         async function initializeApp() {
-            const navTabs = document.querySelectorAll('.nav-tab');
-            navTabs.forEach(tab => {
-                tab.addEventListener('click', (event) => {
-                    event.preventDefault();
-                    const tabName = tab.getAttribute('data-tab');
-                    showTab(event, tabName);
-                });
-            });
-
-            const hadCache = loadDataFromCache();
-            if (hadCache) {
-                refreshActiveTab();
-                showSyncBadge('🔄 กำลังอัปเดตข้อมูลล่าสุด...');
-            }
-
             try {
                 await loadData(true);
-                refreshActiveTab();
-                hideSyncBadge();
+                loadDashboard();
+                
+                const navTabs = document.querySelectorAll('.nav-tab');
+                navTabs.forEach(tab => {
+                    tab.addEventListener('click', (event) => {
+                        event.preventDefault();
+                        const tabName = tab.getAttribute('data-tab');
+                        showTab(event, tabName);
+                    });
+                });
             } catch (error) {
                 console.error('Error:', error);
-                if (hadCache) {
-                    showSyncBadge('⚠️ เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ — แสดงข้อมูลชุดล่าสุดที่บันทึกไว้', true);
-                } else {
-                    alert('เกิดข้อผิดพลาด: ' + error.message);
-                }
+                alert('เกิดข้อผิดพลาด: ' + error.message);
             }
-        }
-
-        // ========================================
-        // Local Cache (แบบเดียวกับระบบลูกเสือ)
-        // ========================================
-        const LOCAL_CACHE_KEY = 'rpk56_service_data_v1';
-
-        function saveDataToCache(data) {
-            try {
-                const light = {
-                    savedAt: Date.now(),
-                    students: data.students || [],
-                    teachers: data.teachers || [],
-                    // ตัดลายเซ็น/รูปที่เป็น base64 ยาวๆ ออก เพื่อไม่ให้เกินพื้นที่ 5MB ของเบราว์เซอร์
-                    activities: (data.activities || []).map(a => ({
-                        ...a,
-                        checkerSignature: String(a.checkerSignature || '').length > 1500 ? '' : a.checkerSignature,
-                        approverSignature: String(a.approverSignature || '').length > 1500 ? '' : a.approverSignature,
-                        images: Array.isArray(a.images)
-                            ? a.images.map(img => String(img).length > 1500 ? '__LAZY_LOAD__' : img)
-                            : a.images
-                    }))
-                };
-                localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(light));
-            } catch (e) {
-                console.warn('บันทึกแคชไม่สำเร็จ:', e);
-            }
-        }
-
-        function loadDataFromCache() {
-            try {
-                const raw = localStorage.getItem(LOCAL_CACHE_KEY);
-                if (!raw) return false;
-                applyLoadedData(JSON.parse(raw));
-                return studentsData.length > 0 || activitiesData.length > 0;
-            } catch (e) {
-                console.warn('อ่านแคชไม่สำเร็จ:', e);
-                return false;
-            }
-        }
-
-        function applyLoadedData(data) {
-            studentsData = data.students || [];
-            activitiesData = (data.activities || []).map(activity => {
-                let attendance = [];
-                let images = [];
-                if (activity.attendance) {
-                    try {
-                        attendance = typeof activity.attendance === 'string' ?
-                            JSON.parse(activity.attendance) : activity.attendance;
-                    } catch (e) {}
-                }
-                if (activity.images) {
-                    try {
-                        images = typeof activity.images === 'string' ?
-                            JSON.parse(activity.images) : activity.images;
-                    } catch (e) {}
-                }
-                return { ...activity, attendance, images };
-            });
-            teachersData = data.teachers || [];
-        }
-
-        // วาดแท็บที่เปิดอยู่ใหม่ (ไม่เปิดหน้าต่างล็อกอินซ้ำ)
-        function refreshActiveTab() {
-            const activeBtn = document.querySelector('.nav-tab.active');
-            const tabName = activeBtn ? activeBtn.getAttribute('data-tab') : 'dashboard';
-            try {
-                switch (tabName) {
-                    case 'dashboard': loadDashboard(); break;
-                    case 'activities': loadActivities(); break;
-                    case 'reports': loadReports(); break;
-                    case 'teacher-report': loadTeacherReport(); break;
-                    case 'students': if (isAdminLoggedIn) loadStudents(); break;
-                    case 'teachers': if (isAdminLoggedIn) loadTeachers(); break;
-                    case 'checker':
-                        if (isSessionActive && currentUser && currentUser.type === 'checker') displayPendingChecks();
-                        break;
-                    case 'approval':
-                        if (isSessionActive && currentUser && currentUser.type === 'approver') displayPendingApprovals();
-                        break;
-                }
-            } catch (e) {
-                console.error('refreshActiveTab:', e);
-            }
-        }
-
-        function showSyncBadge(text, isWarning = false) {
-            let el = document.getElementById('syncBadge');
-            if (!el) {
-                el = document.createElement('div');
-                el.id = 'syncBadge';
-                el.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:3000;padding:10px 16px;border-radius:20px;font-family:Sarabun,sans-serif;font-size:14px;color:white;box-shadow:0 4px 12px rgba(0,0,0,0.2);';
-                document.body.appendChild(el);
-            }
-            el.style.background = isWarning ? '#e67e22' : '#0066cc';
-            el.textContent = text;
-            el.style.display = 'block';
-        }
-
-        function hideSyncBadge() {
-            const el = document.getElementById('syncBadge');
-            if (el) el.style.display = 'none';
         }
 
         // ========================================
@@ -908,8 +790,25 @@
                 const callbackName = 'jsonpCallback_' + Date.now();
                 
                 window[callbackName] = function(data) {
-                    applyLoadedData(data);
-                    saveDataToCache(data);
+                    studentsData = data.students || [];
+                    activitiesData = (data.activities || []).map(activity => {
+                        let attendance = [];
+                        let images = [];
+                        if (activity.attendance) {
+                            try {
+                                attendance = typeof activity.attendance === 'string' ? 
+                                    JSON.parse(activity.attendance) : activity.attendance;
+                            } catch (e) {}
+                        }
+                        if (activity.images) {
+                            try {
+                                images = typeof activity.images === 'string' ? 
+                                    JSON.parse(activity.images) : activity.images;
+                            } catch (e) {}
+                        }
+                        return { ...activity, attendance, images };
+                    });
+                    teachersData = data.teachers || [];
                     
                     resolve();
                     script.remove();
@@ -1086,11 +985,11 @@
             let title = '';
             
             if (status === 'passed') {
-                filtered = reportData.filter(s => s.hours >= HOURS_TARGET);
-                title = `✅ รายชื่อนักเรียนที่ผ่านเกณฑ์ (≥ ${HOURS_TARGET} ชม.)`;
+                filtered = reportData.filter(s => s.status === 'ผ่าน');
+                title = `✅ รายชื่อนักเรียนที่ผ่านเกณฑ์ (≥ ${HOURS_TARGET * 0.8} ชม.)`;
             } else {
-                filtered = reportData.filter(s => s.hours < HOURS_TARGET);
-                title = `❌ รายชื่อนักเรียนที่ยังไม่ผ่านเกณฑ์ (< ${HOURS_TARGET} ชม.)`;
+                filtered = reportData.filter(s => s.status === 'ยังไม่ผ่าน');
+                title = `❌ รายชื่อนักเรียนที่ยังไม่ผ่านเกณฑ์ (< ${HOURS_TARGET * 0.8} ชม.)`;
             }
             
             // Sort by grade, then number
@@ -1143,190 +1042,160 @@
         function calculateOverallHours() {
             let passed = 0, failed = 0;
             calculateStudentReports().forEach(report => {
-                if (report.hours >= HOURS_TARGET) passed++;
+                if (report.status === 'ผ่าน') passed++;
                 else failed++;
             });
             return { passed, failed };
         }
 
-        // ✅ อ่านจำนวนชั่วโมงของกิจกรรมให้เป็นตัวเลขเสมอ (รองรับ 1.5, "2", "2 ชม.")
-        function getActivityHours(activity) {
-            const n = parseFloat(String(activity.hours ?? '').replace(',', '.'));
-            return n > 0 ? n : 1;
-        }
-
-        // ✅ ถือว่า "อนุมัติแล้ว" ตามเกณฑ์เดียวกับแท็บอนุมัติ:
-        //    มีชื่อผู้อนุมัติแล้ว และสถานะไม่ใช่ "ไม่ผ่าน" (หรือสถานะเป็น "ผ่าน")
-        //    เดิมเช็คเฉพาะช่องสถานะ ทำให้รายงานที่อนุมัติแล้วแต่ช่องสถานะว่าง/สะกดต่าง ไม่ถูกนับ
-        function isActivityRejected(activity) {
-            return String(activity.approvalStatus || '').trim() === 'ไม่ผ่าน';
-        }
-
-        function isActivityApproved(activity) {
-            if (isActivityRejected(activity)) return false;
-            return String(activity.approvalStatus || '').trim() === 'ผ่าน' ||
-                   String(activity.approver || '').trim() !== '';
-        }
-
-        // ✅ แก้ไขการนับชั่วโมง
-        // - จับคู่นักเรียนด้วย ID แบบแปลงเป็นข้อความ (กัน ID ที่ Sheets ส่งมาเป็นตัวเลข)
-        // - นับจากรายชื่อที่ถูกเช็คว่า "มา" ในกิจกรรม ไม่บังคับให้ชื่อห้องของกิจกรรมตรงกับห้องปัจจุบัน
-        //   (เดิมถ้านักเรียนย้ายห้อง/แก้ชื่อห้อง/มีช่องว่างเกิน ชั่วโมงจะหายทั้งหมด)
-        // - ชั่วโมงทศนิยมถูกนับครบ และ % สูงสุดไม่เกิน 100
-        // - แยกชั่วโมงที่ "รออนุมัติ" ไว้ให้เห็น (ยังไม่นับเข้าเกณฑ์)
         function calculateStudentReports() {
             if (studentsData.length === 0) return [];
             
             return studentsData.filter(student => {
-                return String(student.grade || '').trim().startsWith('ม.');
+                const grade = String(student.grade || '').replace(/\/[123]/, '');
+                return grade.startsWith('ม.');
             }).map((student, index) => {
-                const sid = String(student.id).trim();
-                let hours = 0, pendingCheckHours = 0, pendingApproveHours = 0, activityCount = 0;
-                const counted = new Set();
-
+                let hours = 0;
                 activitiesData.forEach(activity => {
-                    if (!Array.isArray(activity.attendance) || counted.has(activity.id)) return;
-                    const record = activity.attendance.find(r => String(r.studentId).trim() === sid);
-                    if (!record || record.status !== 'present') return;
-                    counted.add(activity.id);
-
-                    const h = getActivityHours(activity);
-                    if (isActivityApproved(activity)) {
-                        hours += h;
-                        activityCount++;
-                    } else if (!isActivityRejected(activity)) {
-                        if (String(activity.checker || '').trim() === '') {
-                            pendingCheckHours += h;     // ยังไม่ผ่านผู้ตรวจสอบ (จะยังไม่ขึ้นในแท็บอนุมัติ)
-                        } else {
-                            pendingApproveHours += h;   // ตรวจแล้ว รอผู้อนุมัติ
+                    // นับชั่วโมงเฉพาะกิจกรรมที่ 'ผ่าน' การอนุมัติแล้วเท่านั้น
+                    if (activity.approvalStatus === 'ผ่าน' && String(activity.grade || '') === String(student.grade || '') && activity.attendance) {
+                        const record = activity.attendance.find(r => r.studentId === student.id);
+                        if (record && record.status === 'present') {
+                            hours += Number(activity.hours || 1); // แปลงเป็นตัวเลขเพื่อป้องกันปัญหา string concatenation
                         }
                     }
                 });
-
-                hours = Math.round(hours * 100) / 100;
-                pendingCheckHours = Math.round(pendingCheckHours * 100) / 100;
-                pendingApproveHours = Math.round(pendingApproveHours * 100) / 100;
-                const pendingHours = pendingCheckHours + pendingApproveHours;
-                const percentage = Math.min(100, Math.round((hours / HOURS_TARGET) * 100));
-                const status = hours >= HOURS_TARGET ? 'ผ่าน' : 'ยังไม่ผ่าน';
                 
-                return { ...student, hours, pendingHours, pendingCheckHours, pendingApproveHours, activityCount, percentage, status, index: index + 1 };
+                const percentage = ((hours / HOURS_TARGET) * 100).toFixed(0);
+                const status = hours >= (HOURS_TARGET * 0.8) ? 'ผ่าน' : 'ยังไม่ผ่าน';
+                
+                return { ...student, hours, percentage, status, index: index + 1 };
             });
         }
 
-        // ✅ เรียงชั้น/ห้อง/เลขที่ (ใช้ร่วมกันทั้งหน้าเว็บและ PDF)
-        function gradeRank(g = '') {
-            const m = String(g).trim().match(/^(ป|ม)\.(\d+)(?:\/(\d+))?/);
-            if (!m) return 9999;
-            return (m[1] === 'ป' ? 0 : 1000) + Number(m[2]) * 10 + Number(m[3] || 0);
-        }
-
         // ========================================
-        // PDF Report (บำเพ็ญประโยชน์) — รูปแบบเดียวกับรายงานลูกเสือ
+        // PDF Report (บำเพ็ญประโยชน์)
         // ========================================
         function generateAttendancePDFReport() {
             let allReports = calculateStudentReports();
             const gradeFilter = document.getElementById('reportGradeFilter').value;
-
+            
             if (gradeFilter !== 'all') {
                 allReports = allReports.filter(s => String(s.grade || '').trim() === gradeFilter.trim());
             }
 
-            allReports.sort((a, b) =>
-                gradeRank(a.grade) - gradeRank(b.grade) ||
-                (parseInt(a.number) || 0) - (parseInt(b.number) || 0));
+            const gradeOrder = {
+                'ม.4/1': 1, 'ม.4/2': 2, 'ม.4/3': 3,
+                'ม.5/1': 4, 'ม.5/2': 5, 'ม.5/3': 6,
+                'ม.6/1': 7, 'ม.6/2': 8, 'ม.6/3': 9, 'ม.6/4': 10
+            };
 
-            const fmtH = n => (Math.round(Number(n || 0) * 10) / 10).toString();
-            const isPass = s => s.status === 'ผ่าน';
+            allReports.sort((a, b) => {
+                let gA = gradeOrder[a.grade] || 99;
+                let gB = gradeOrder[b.grade] || 99;
+                if (gA !== gB) return gA - gB;
+                return (parseInt(a.number) || 0) - (parseInt(b.number) || 0);
+            });
 
             const totalStudents = allReports.length;
-            const passedCount   = allReports.filter(isPass).length;
-            const failedCount   = totalStudents - passedCount;
-            const totalHours    = allReports.reduce((sum, s) => sum + Number(s.hours || 0), 0);
-            const avgHours      = totalStudents > 0 ? fmtH(totalHours / totalStudents) : '0';
-            const passPercent   = totalStudents > 0 ? ((passedCount / totalStudents) * 100).toFixed(1) : '0.0';
-            const failPercent   = totalStudents > 0 ? ((failedCount / totalStudents) * 100).toFixed(1) : '0.0';
+            const passedCount   = allReports.filter(s => s.status === 'ผ่าน').length;
+            const failedCount   = allReports.filter(s => s.status === 'ยังไม่ผ่าน').length;
+            const passPercent   = totalStudents > 0 ? ((passedCount / totalStudents) * 100).toFixed(1) : 0;
+            const failPercent   = totalStudents > 0 ? ((failedCount / totalStudents) * 100).toFixed(1) : 0;
 
-            const filterLabel = gradeFilter === 'all' ? 'ทุกระดับชั้น' : `ห้อง ${gradeFilter}`;
+            const filterLabel = gradeFilter === 'all' ? 'มัธยมศึกษาตอนปลาย (ม.4-ม.6)' : `ห้อง ${gradeFilter}`;
             const printDate = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
-            const totalActivities = activitiesData.filter(a =>
-                isActivityApproved(a) &&
-                (gradeFilter === 'all' || String(a.grade || '').trim() === gradeFilter.trim())).length;
+            const totalActivities = activitiesData.filter(a => a.approvalStatus === 'ผ่าน').length;
 
             // แยกข้อมูลตามห้องเรียน
             const gradeMap = {};
             allReports.forEach(s => {
-                const g = String(s.grade || 'ไม่ระบุ').trim();
-                if (!gradeMap[g]) gradeMap[g] = [];
-                gradeMap[g].push(s);
+                if (!gradeMap[s.grade]) gradeMap[s.grade] = [];
+                gradeMap[s.grade].push(s);
             });
-            const sortedGrades = Object.keys(gradeMap).sort((a, b) => gradeRank(a) - gradeRank(b));
-            const levelOf = g => String(g).split('/')[0];   // ม.4/1 → ม.4
+            const sortedGrades = Object.keys(gradeMap).sort((a, b) => (gradeOrder[a] || 99) - (gradeOrder[b] || 99));
 
             // ============================================================
             // ส่วนที่ 1 — ตารางสรุปแยกระดับชั้น (หน้า 1)
             // ============================================================
-            const stat = list => {
-                const total = list.length;
-                const passed = list.filter(isPass).length;
-                const hours = list.reduce((sum, s) => sum + Number(s.hours || 0), 0);
-                return {
-                    total, passed, failed: total - passed,
-                    avg: total > 0 ? fmtH(hours / total) : '0',
-                    pct: total > 0 ? ((passed / total) * 100).toFixed(1) : '0.0'
-                };
+            const gradeGroupMap = {
+                'ม.4': ['ม.4/1','ม.4/2','ม.4/3'],
+                'ม.5': ['ม.5/1','ม.5/2','ม.5/3'],
+                'ม.6': ['ม.6/1','ม.6/2','ม.6/3','ม.6/4']
             };
-
-            const subtotalRow = (label, x) => `<tr style="background:#e8edf7;font-weight:700;">
-                <td style="padding:6px 10px;border:1px solid #c8d3e8;color:#1e3c72;">${label}</td>
-                <td style="padding:6px 10px;border:1px solid #c8d3e8;text-align:center;">${x.total}</td>
-                <td style="padding:6px 10px;border:1px solid #c8d3e8;text-align:center;color:#155724;">${x.passed}</td>
-                <td style="padding:6px 10px;border:1px solid #c8d3e8;text-align:center;color:#721c24;">${x.failed}</td>
-                <td style="padding:6px 10px;border:1px solid #c8d3e8;text-align:center;color:#0066cc;">${x.avg}</td>
-                <td style="padding:6px 10px;border:1px solid #c8d3e8;text-align:center;font-weight:700;">${x.pct}%</td>
-            </tr>`;
 
             const summaryRowsHTML = [];
-            let prevLevel = '';
-            let levelRooms = [];
-            const flushLevel = () => {
-                if (prevLevel && levelRooms.length > 1) {
-                    summaryRowsHTML.push(subtotalRow(`รวม ${prevLevel}`, stat(levelRooms.flatMap(g => gradeMap[g]))));
-                }
-            };
+            let prevGroupKey = '';
 
             sortedGrades.forEach((grade, idx) => {
-                const level = levelOf(grade);
-                if (level !== prevLevel) {
-                    flushLevel();
-                    prevLevel = level;
-                    levelRooms = [];
-                }
-                levelRooms.push(grade);
+                const gs = gradeMap[grade];
+                const gTotal   = gs.length;
+                const gPassed  = gs.filter(s => s.status === 'ผ่าน').length;
+                const gFailed  = gs.filter(s => s.status === 'ยังไม่ผ่าน').length;
+                const gPassPct = gTotal > 0 ? ((gPassed / gTotal) * 100).toFixed(1) : '0.0';
+                const pctColor = parseFloat(gPassPct) >= 80 ? '#155724' : '#721c24';
+                const pctBg    = parseFloat(gPassPct) >= 80 ? '#d4edda' : '#f8d7da';
 
-                const x = stat(gradeMap[grade]);
-                const pctColor = parseFloat(x.pct) >= 80 ? '#155724' : '#721c24';
-                const pctBg    = parseFloat(x.pct) >= 80 ? '#d4edda' : '#f8d7da';
-                summaryRowsHTML.push(`<tr style="background:${idx % 2 === 0 ? '#fff' : '#f8f9fa'};">
+                const curGroupKey = Object.keys(gradeGroupMap).find(k => gradeGroupMap[k].includes(grade)) || grade;
+
+                if (prevGroupKey && prevGroupKey !== curGroupKey) {
+                    const prevGrades = gradeGroupMap[prevGroupKey] || [];
+                    const existPrev = prevGrades.filter(g => gradeMap[g]);
+                    if (existPrev.length > 1) {
+                        const groupStudents = existPrev.flatMap(g => gradeMap[g] || []);
+                        const sgTotal  = groupStudents.length;
+                        const sgPassed = groupStudents.filter(s => s.status === 'ผ่าน').length;
+                        const sgFailed = groupStudents.filter(s => s.status === 'ยังไม่ผ่าน').length;
+                        const sgPct    = sgTotal > 0 ? ((sgPassed / sgTotal) * 100).toFixed(1) : '0.0';
+                        summaryRowsHTML.push(`<tr style="background:#e8edf7;font-weight:700;">
+                            <td style="padding:6px 10px;border:1px solid #c8d3e8;color:#1e3c72;">รวม ${prevGroupKey}</td>
+                            <td style="padding:6px 10px;border:1px solid #c8d3e8;text-align:center;">${sgTotal}</td>
+                            <td style="padding:6px 10px;border:1px solid #c8d3e8;text-align:center;color:#155724;">${sgPassed}</td>
+                            <td style="padding:6px 10px;border:1px solid #c8d3e8;text-align:center;color:#721c24;">${sgFailed}</td>
+                            <td style="padding:6px 10px;border:1px solid #c8d3e8;text-align:center;font-weight:700;">${sgPct}%</td>
+                        </tr>`);
+                    }
+                }
+
+                summaryRowsHTML.push(`<tr style="background:${idx%2===0?'#fff':'#f8f9fa'};">
                     <td style="padding:7px 10px;border:1px solid #ddd;color:#1e3c72;">${grade}</td>
-                    <td style="padding:7px 10px;border:1px solid #ddd;text-align:center;">${x.total}</td>
-                    <td style="padding:7px 10px;border:1px solid #ddd;text-align:center;color:#28a745;font-weight:700;">${x.passed}</td>
-                    <td style="padding:7px 10px;border:1px solid #ddd;text-align:center;color:#dc3545;font-weight:700;">${x.failed}</td>
-                    <td style="padding:7px 10px;border:1px solid #ddd;text-align:center;color:#0066cc;">${x.avg}</td>
+                    <td style="padding:7px 10px;border:1px solid #ddd;text-align:center;">${gTotal}</td>
+                    <td style="padding:7px 10px;border:1px solid #ddd;text-align:center;color:#28a745;font-weight:700;">${gPassed}</td>
+                    <td style="padding:7px 10px;border:1px solid #ddd;text-align:center;color:#dc3545;font-weight:700;">${gFailed}</td>
                     <td style="padding:7px 10px;border:1px solid #ddd;text-align:center;">
-                        <span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:${pctBg};color:${pctColor};">${x.pct}%</span>
+                        <span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:${pctBg};color:${pctColor};">${gPassPct}%</span>
                     </td>
                 </tr>`);
+
+                prevGroupKey = curGroupKey;
             });
-            flushLevel();
+
+            if (prevGroupKey) {
+                const lastGrades = gradeGroupMap[prevGroupKey] || [];
+                const existLast = lastGrades.filter(g => gradeMap[g]);
+                if (existLast.length > 1) {
+                    const groupStudents = existLast.flatMap(g => gradeMap[g] || []);
+                    const sgTotal  = groupStudents.length;
+                    const sgPassed = groupStudents.filter(s => s.status === 'ผ่าน').length;
+                    const sgFailed = groupStudents.filter(s => s.status === 'ยังไม่ผ่าน').length;
+                    const sgPct    = sgTotal > 0 ? ((sgPassed / sgTotal) * 100).toFixed(1) : '0.0';
+                    summaryRowsHTML.push(`<tr style="background:#e8edf7;font-weight:700;">
+                        <td style="padding:6px 10px;border:1px solid #c8d3e8;color:#1e3c72;">รวม ${prevGroupKey}</td>
+                        <td style="padding:6px 10px;border:1px solid #c8d3e8;text-align:center;">${sgTotal}</td>
+                        <td style="padding:6px 10px;border:1px solid #c8d3e8;text-align:center;color:#155724;">${sgPassed}</td>
+                        <td style="padding:6px 10px;border:1px solid #c8d3e8;text-align:center;color:#721c24;">${sgFailed}</td>
+                        <td style="padding:6px 10px;border:1px solid #c8d3e8;text-align:center;font-weight:700;">${sgPct}%</td>
+                    </tr>`);
+                }
+            }
 
             const gradeSummaryRows = summaryRowsHTML.join('');
+
             const gradeSummaryTotal = `<tr style="background:#1e3c72;color:white;font-weight:700;">
                 <td style="padding:8px 10px;border:1px solid #1e3c72;">รวมทั้งหมด</td>
                 <td style="padding:8px 10px;border:1px solid #1e3c72;text-align:center;">${totalStudents}</td>
                 <td style="padding:8px 10px;border:1px solid #1e3c72;text-align:center;">${passedCount}</td>
                 <td style="padding:8px 10px;border:1px solid #1e3c72;text-align:center;">${failedCount}</td>
-                <td style="padding:8px 10px;border:1px solid #1e3c72;text-align:center;">${avgHours}</td>
                 <td style="padding:8px 10px;border:1px solid #1e3c72;text-align:center;">${passPercent}%</td>
             </tr>`;
 
@@ -1336,31 +1205,28 @@
             let failedByGradeHTML = '';
             let globalFailIdx = 1;
             sortedGrades.forEach(grade => {
-                const failedInGrade = gradeMap[grade].filter(s => !isPass(s));
+                const failedInGrade = gradeMap[grade].filter(s => s.status === 'ยังไม่ผ่าน');
                 if (failedInGrade.length === 0) return;
                 const gTotal  = gradeMap[grade].length;
+                const gFailed = failedInGrade.length;
                 failedByGradeHTML += `<div style="margin-bottom:18px;page-break-inside:avoid;">
                     <div style="background:#dc3545;color:white;padding:6px 12px;border-radius:6px 6px 0 0;font-size:13px;font-weight:700;display:flex;justify-content:space-between;">
                         <span>ชั้น ${grade}</span>
-                        <span>ไม่ผ่าน ${failedInGrade.length} จาก ${gTotal} คน</span>
+                        <span>ไม่ผ่าน ${gFailed} จาก ${gTotal} คน</span>
                     </div>
                     <table style="width:100%;border-collapse:collapse;font-size:12px;">
                         <thead><tr style="background:#fde8ea;">
                             <th style="padding:6px 8px;border:1px solid #f5c6cb;width:35px;text-align:center;">ลำดับ</th>
                             <th style="padding:6px 8px;border:1px solid #f5c6cb;text-align:left;">ชื่อ-นามสกุล</th>
-                            <th style="padding:6px 8px;border:1px solid #f5c6cb;width:48px;text-align:center;white-space:nowrap;">เลขที่</th>
-                            <th style="padding:6px 8px;border:1px solid #f5c6cb;width:70px;text-align:center;">ชั่วโมงสะสม</th>
-                            <th style="padding:6px 8px;border:1px solid #f5c6cb;width:60px;text-align:center;">ขาดอีก</th>
-                            <th style="padding:6px 8px;border:1px solid #f5c6cb;width:70px;text-align:center;">รออนุมัติ</th>
-                            <th style="padding:6px 8px;border:1px solid #f5c6cb;width:50px;text-align:center;">%</th>
+                            <th style="padding:6px 8px;border:1px solid #f5c6cb;width:40px;text-align:center;">เลขที่</th>
+                            <th style="padding:6px 8px;border:1px solid #f5c6cb;width:80px;text-align:center;">ชั่วโมงสะสม</th>
+                            <th style="padding:6px 8px;border:1px solid #f5c6cb;width:60px;text-align:center;">%</th>
                         </tr></thead>
-                        <tbody>${failedInGrade.map((s, i) => `<tr style="background:${i % 2 === 0 ? '#fff' : '#fff5f5'};">
+                        <tbody>${failedInGrade.map((s, i) => `<tr style="background:${i%2===0?'#fff':'#fff5f5'};">
                             <td style="padding:5px 8px;border:1px solid #f5c6cb;text-align:center;">${globalFailIdx++}</td>
                             <td style="padding:5px 8px;border:1px solid #f5c6cb;">${s.name}</td>
-                            <td style="padding:5px 8px;border:1px solid #f5c6cb;text-align:center;">${s.number || '-'}</td>
-                            <td style="padding:5px 8px;border:1px solid #f5c6cb;text-align:center;color:#0066cc;font-weight:700;">${fmtH(s.hours)}</td>
-                            <td style="padding:5px 8px;border:1px solid #f5c6cb;text-align:center;color:#dc3545;">${fmtH(Math.max(0, HOURS_TARGET - s.hours))}</td>
-                            <td style="padding:5px 8px;border:1px solid #f5c6cb;text-align:center;color:#e67e22;">${s.pendingHours > 0 ? fmtH(s.pendingHours) : '-'}</td>
+                            <td style="padding:5px 8px;border:1px solid #f5c6cb;text-align:center;">${s.number}</td>
+                            <td style="padding:5px 8px;border:1px solid #f5c6cb;text-align:center;font-weight:700;color:#dc3545;">${s.hours} ชม.</td>
                             <td style="padding:5px 8px;border:1px solid #f5c6cb;text-align:center;font-weight:700;color:#dc3545;">${s.percentage}%</td>
                         </tr>`).join('')}</tbody>
                     </table>
@@ -1376,37 +1242,35 @@
             // ส่วนที่ 3 — รายชื่อทุกคนแยกตามห้อง (หน้า 3+)
             // ============================================================
             let allByGradeHTML = '';
-            let globalIdx = 1;
             sortedGrades.forEach(grade => {
-                const students = gradeMap[grade];
-                const x = stat(students);
-                allByGradeHTML += `<div style="margin-bottom:22px;page-break-inside:avoid;">
-                    <div style="background:#1e3c72;color:white;padding:7px 14px;border-radius:6px 6px 0 0;display:flex;justify-content:space-between;align-items:center;">
-                        <span style="font-size:13px;font-weight:700;">ชั้น ${grade}</span>
-                        <span style="font-size:12px;">รวม ${x.total} คน | ✅ ผ่าน ${x.passed} | ❌ ไม่ผ่าน ${x.failed}</span>
+                const gs = gradeMap[grade];
+                const gPassed = gs.filter(s => s.status === 'ผ่าน').length;
+                const gFailed = gs.filter(s => s.status === 'ยังไม่ผ่าน').length;
+                
+                allByGradeHTML += `<div style="margin-bottom:20px;page-break-before:always;">
+                    <div style="background:#1e3c72;color:white;padding:8px 12px;border-radius:6px 6px 0 0;font-size:13px;font-weight:700;display:flex;justify-content:space-between;">
+                        <span>ชั้น ${grade} (รวม ${gs.length} คน)</span>
+                        <span>ผ่าน ${gPassed} | ไม่ผ่าน ${gFailed}</span>
                     </div>
-                    <table style="width:100%;border-collapse:collapse;font-size:11.5px;">
+                    <table style="width:100%;border-collapse:collapse;font-size:12px;">
                         <thead><tr style="background:#e8edf7;">
-                            <th style="padding:5px 7px;border:1px solid #c8d3e8;width:30px;text-align:center;">ลำดับ</th>
-                            <th style="padding:5px 7px;border:1px solid #c8d3e8;text-align:left;">ชื่อ-นามสกุล</th>
-                            <th style="padding:5px 7px;border:1px solid #c8d3e8;width:48px;text-align:center;white-space:nowrap;">เลขที่</th>
-                            <th style="padding:5px 7px;border:1px solid #c8d3e8;width:60px;text-align:center;">ชั่วโมง</th>
-                            <th style="padding:5px 7px;border:1px solid #c8d3e8;width:60px;text-align:center;">รออนุมัติ</th>
-                            <th style="padding:5px 7px;border:1px solid #c8d3e8;width:45px;text-align:center;">%</th>
-                            <th style="padding:5px 7px;border:1px solid #c8d3e8;width:60px;text-align:center;">สถานะ</th>
+                            <th style="padding:6px 8px;border:1px solid #c8d3e8;width:35px;text-align:center;">เลขที่</th>
+                            <th style="padding:6px 8px;border:1px solid #c8d3e8;text-align:left;">ชื่อ-นามสกุล</th>
+                            <th style="padding:6px 8px;border:1px solid #c8d3e8;width:80px;text-align:center;">ชั่วโมงสะสม</th>
+                            <th style="padding:6px 8px;border:1px solid #c8d3e8;width:60px;text-align:center;">%</th>
+                            <th style="padding:6px 8px;border:1px solid #c8d3e8;width:70px;text-align:center;">สถานะ</th>
                         </tr></thead>
-                        <tbody>${students.map((s, i) => `<tr style="background:${!isPass(s) ? '#fff5f5' : (i % 2 === 0 ? '#fff' : '#f8f9fa')};">
-                            <td style="padding:4px 7px;border:1px solid #ddd;text-align:center;">${globalIdx++}</td>
-                            <td style="padding:4px 7px;border:1px solid #ddd;">${s.name}</td>
-                            <td style="padding:4px 7px;border:1px solid #ddd;text-align:center;">${s.number || '-'}</td>
-                            <td style="padding:4px 7px;border:1px solid #ddd;text-align:center;color:#0066cc;font-weight:700;">${fmtH(s.hours)}</td>
-                            <td style="padding:4px 7px;border:1px solid #ddd;text-align:center;color:#e67e22;">${s.pendingHours > 0 ? fmtH(s.pendingHours) : '-'}</td>
-                            <td style="padding:4px 7px;border:1px solid #ddd;text-align:center;font-weight:700;color:${isPass(s) ? '#28a745' : '#dc3545'};">${s.percentage}%</td>
-                            <td style="padding:4px 7px;border:1px solid #ddd;text-align:center;">
-                                <span style="display:inline-block;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;
-                                    background:${isPass(s) ? '#d4edda' : '#f8d7da'};
-                                    color:${isPass(s) ? '#155724' : '#721c24'};">
-                                    ${isPass(s) ? 'ผ่าน' : 'ไม่ผ่าน'}
+                        <tbody>${gs.map(s => `
+                        <tr style="background:${s.status==='ผ่าน'?'#fff':'#fff0f2'};">
+                            <td style="padding:5px 8px;border:1px solid #c8d3e8;text-align:center;">${s.number}</td>
+                            <td style="padding:5px 8px;border:1px solid #c8d3e8;">${s.name}</td>
+                            <td style="padding:5px 8px;border:1px solid #c8d3e8;text-align:center;font-weight:700;color:${s.status==='ผ่าน'?'#155724':'#dc3545'};">${s.hours} ชม.</td>
+                            <td style="padding:5px 8px;border:1px solid #c8d3e8;text-align:center;font-weight:700;color:${s.status==='ผ่าน'?'#155724':'#dc3545'};">${s.percentage}%</td>
+                            <td style="padding:5px 8px;border:1px solid #c8d3e8;text-align:center;">
+                                <span style="display:inline-block;padding:2px 6px;border-radius:10px;font-size:10px;font-weight:700;
+                                    background:${s.status==='ผ่าน'?'#d4edda':'#f8d7da'};
+                                    color:${s.status==='ผ่าน'?'#155724':'#721c24'};">
+                                    ${s.status}
                                 </span>
                             </td>
                         </tr>`).join('')}</tbody>
@@ -1423,92 +1287,90 @@
                 .ph h1{font-size:17px;font-weight:700;color:#1e3c72;margin-bottom:3px;}
                 .ph h2{font-size:13px;font-weight:400;color:#444;margin-bottom:3px;}
                 .ph .meta{font-size:11px;color:#666;}
-                .sg{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;}
+                .sg{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;}
                 .sb{border-radius:8px;padding:12px;text-align:center;}
                 .sb .num{font-size:30px;font-weight:700;line-height:1;margin-bottom:3px;}
                 .sb .lbl{font-size:11px;font-weight:600;}
                 .sb .pct{font-size:10px;margin-top:3px;opacity:.75;}
                 .t{background:#e8edf7;color:#1e3c72;}.p{background:#d4edda;color:#155724;}
-                .f{background:#f8d7da;color:#721c24;}.n{background:#e3f0ff;color:#0066cc;}
+                .f{background:#f8d7da;color:#721c24;}.n{background:#e2e3e5;color:#495057;}
                 .pw{margin-bottom:14px;}.pl{display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;}
-                .po{height:12px;background:#eee;border-radius:6px;overflow:hidden;}
-                .pi{height:100%;background:linear-gradient(90deg,#28a745,#20c997);border-radius:6px;}
-                .st{font-size:13px;font-weight:700;color:#1e3c72;border-left:4px solid #1e3c72;padding-left:10px;margin:14px 0 8px 0;}
-                .note{font-size:11px;color:#666;margin-top:6px;}
-                .ss{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-top:30px;page-break-inside:avoid;}
-                .sb2{text-align:center;}.sl{border-bottom:1px solid #333;margin:35px 10px 5px 10px;}
-                .sn{font-size:12px;}.st2{font-size:11px;color:#555;}
+                .po{height:10px;background:#eee;border-radius:5px;overflow:hidden;}
+                .pi{height:100%;background:#20c997;border-radius:5px;}
+                .st{font-size:14px;font-weight:700;color:#1e3c72;margin-bottom:8px;border-left:4px solid #1e3c72;padding-left:8px;}
                 .pb{page-break-before:always;}
-                @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}`;
+                .ss{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:40px;page-break-inside:avoid;}
+                .sb2{text-align:center;}
+                .sl{height:60px;}
+                .sn{font-size:12px;margin-bottom:4px;}.st2{font-size:11px;color:#666;}
+            `;
 
-            const hdr = (sub) => `<div class="ph">
-                <h1>รายงานผลการเข้าร่วมกิจกรรมบำเพ็ญประโยชน์${sub ? ' — ' + sub : ''}</h1>
-                <h2>โรงเรียนราชประชานุเคราะห์ 56 จังหวัดน่าน</h2>
-                <div class="meta">ระดับ: <strong>${filterLabel}</strong> &nbsp;|&nbsp; กิจกรรมที่อนุมัติแล้ว: <strong>${totalActivities} กิจกรรม</strong> &nbsp;|&nbsp; เกณฑ์ผ่าน: <strong>${HOURS_TARGET} ชั่วโมง</strong> &nbsp;|&nbsp; วันที่พิมพ์: <strong>${printDate}</strong></div>
-            </div>`;
+            const hdr = (title) => `
+                <div class="ph">
+                    <h1>รายงานผลการเข้าร่วมกิจกรรมบำเพ็ญประโยชน์ — ${title}</h1>
+                    <h2>โรงเรียนราชประชานุเคราะห์ 56 จังหวัดน่าน</h2>
+                    <div class="meta">ระดับ: ${filterLabel} | จำนวนกิจกรรมที่อนุมัติ: ${totalActivities} กิจกรรม | วันที่พิมพ์: ${printDate}</div>
+                </div>
+            `;
 
-            const printHtml = `<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8">
-<title>รายงานผลกิจกรรมบำเพ็ญประโยชน์ - ${filterLabel}</title>
-<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
-<style>${CSS}</style></head><body>
+            const printHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${CSS}</style></head><body>
+            <!-- หน้า 1: สรุปภาพรวม -->
+            ${hdr('สรุปผลรวม')}
+            <div class="sg">
+                <div class="sb t"><div class="num">${totalStudents}</div><div class="lbl">👥 นักเรียนทั้งหมด</div><div class="pct">คน</div></div>
+                <div class="sb p"><div class="num">${passedCount}</div><div class="lbl">✅ ผ่านเกณฑ์ (≥${HOURS_TARGET * 0.8} ชม.)</div><div class="pct">${passPercent}%</div></div>
+                <div class="sb f"><div class="num">${failedCount}</div><div class="lbl">❌ ไม่ผ่านเกณฑ์ (<${HOURS_TARGET * 0.8} ชม.)</div><div class="pct">${failPercent}%</div></div>
+            </div>
+            <div class="pw">
+                <div class="pl"><span>อัตราการผ่านโดยรวม</span><span><strong>${passedCount}</strong> จาก <strong>${totalStudents}</strong> คน (${passPercent}%)</span></div>
+                <div class="po"><div class="pi" style="width:${passPercent}%;"></div></div>
+            </div>
+            <div class="st">📊 สรุปผลแยกตามระดับชั้น</div>
+            <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                <thead><tr style="background:#1e3c72;color:white;">
+                    <th style="padding:8px 10px;border:1px solid #1e3c72;text-align:left;width:80px;">ชั้น/ห้อง</th>
+                    <th style="padding:8px 10px;border:1px solid #1e3c72;text-align:center;width:60px;">นักเรียน</th>
+                    <th style="padding:8px 10px;border:1px solid #1e3c72;text-align:center;width:60px;">✅ ผ่าน</th>
+                    <th style="padding:8px 10px;border:1px solid #1e3c72;text-align:center;width:60px;">❌ ไม่ผ่าน</th>
+                    <th style="padding:8px 10px;border:1px solid #1e3c72;text-align:center;width:70px;">ร้อยละผ่าน</th>
+                </tr></thead>
+                <tbody>${gradeSummaryRows}${gradeSummaryTotal}</tbody>
+            </table>
 
-<!-- หน้า 1: สรุปรวม + ตารางแยกชั้น -->
-${hdr('สรุปผลรวม')}
-<div class="sg">
-    <div class="sb t"><div class="num">${totalStudents}</div><div class="lbl">👥 นักเรียนทั้งหมด</div><div class="pct">คน</div></div>
-    <div class="sb p"><div class="num">${passedCount}</div><div class="lbl">✅ ผ่านเกณฑ์ (≥${HOURS_TARGET} ชม.)</div><div class="pct">${passPercent}%</div></div>
-    <div class="sb f"><div class="num">${failedCount}</div><div class="lbl">❌ ไม่ผ่านเกณฑ์ (&lt;${HOURS_TARGET} ชม.)</div><div class="pct">${failPercent}%</div></div>
-    <div class="sb n"><div class="num">${avgHours}</div><div class="lbl">⏱️ ชั่วโมงเฉลี่ย</div><div class="pct">ชม./คน</div></div>
-</div>
-<div class="pw">
-    <div class="pl"><span>อัตราการผ่านโดยรวม</span><span><strong>${passedCount}</strong> จาก <strong>${totalStudents}</strong> คน (${passPercent}%)</span></div>
-    <div class="po"><div class="pi" style="width:${passPercent}%;"></div></div>
-</div>
-<div class="st">📊 สรุปผลแยกตามระดับชั้น</div>
-<table style="width:100%;border-collapse:collapse;font-size:12px;">
-    <thead><tr style="background:#1e3c72;color:white;">
-        <th style="padding:8px 10px;border:1px solid #1e3c72;text-align:left;width:80px;">ชั้น/ห้อง</th>
-        <th style="padding:8px 10px;border:1px solid #1e3c72;text-align:center;width:60px;">นักเรียน</th>
-        <th style="padding:8px 10px;border:1px solid #1e3c72;text-align:center;width:60px;">✅ ผ่าน</th>
-        <th style="padding:8px 10px;border:1px solid #1e3c72;text-align:center;width:60px;">❌ ไม่ผ่าน</th>
-        <th style="padding:8px 10px;border:1px solid #1e3c72;text-align:center;width:70px;">⏱️ ชม.เฉลี่ย</th>
-        <th style="padding:8px 10px;border:1px solid #1e3c72;text-align:center;width:70px;">ร้อยละผ่าน</th>
-    </tr></thead>
-    <tbody>${gradeSummaryRows}${gradeSummaryTotal}</tbody>
-</table>
-<div class="note">* นับชั่วโมงเฉพาะกิจกรรมที่ผู้อนุมัติลงนามแล้ว ส่วนชั่วโมงที่ยังรอตรวจสอบ/รออนุมัติแสดงในช่อง "รออนุมัติ" และยังไม่นับเข้าเกณฑ์</div>
+            <!-- หน้า 2: รายชื่อไม่ผ่านแยกห้อง -->
+            <div class="pb"></div>
+            ${hdr('รายชื่อนักเรียนที่ไม่ผ่านเกณฑ์')}
+            <div class="st">❌ รายชื่อนักเรียนที่ไม่ผ่านเกณฑ์ รวม ${failedCount} คน (เกณฑ์ผ่าน ≥ ${HOURS_TARGET * 0.8} ชม.)</div>
+            ${failedByGradeHTML}
 
-<!-- หน้า 2: รายชื่อไม่ผ่านแยกห้อง -->
-<div class="pb"></div>
-${hdr('รายชื่อนักเรียนที่ไม่ผ่านเกณฑ์')}
-<div class="st">❌ รายชื่อนักเรียนที่ไม่ผ่านเกณฑ์ รวม ${failedCount} คน (เกณฑ์ผ่าน ≥ ${HOURS_TARGET} ชั่วโมง)</div>
-${failedByGradeHTML}
+            <!-- หน้า 3+: รายชื่อทุกคนแยกห้อง -->
+            <div class="pb"></div>
+            ${hdr('รายชื่อนักเรียนทั้งหมด')}
+            <div class="st">📋 รายชื่อนักเรียนทั้งหมด ${totalStudents} คน แยกตามระดับชั้น</div>
+            ${allByGradeHTML}
 
-<!-- หน้า 3+: รายชื่อทุกคนแยกห้อง -->
-<div class="pb"></div>
-${hdr('รายชื่อนักเรียนทั้งหมด')}
-<div class="st">📋 รายชื่อนักเรียนทั้งหมด ${totalStudents} คน แยกตามระดับชั้น</div>
-${allByGradeHTML}
+            <!-- ลายเซ็น -->
+            <div class="ss">
+                <div class="sb2"><div class="sl"></div><div class="sn">( .................................................. )</div><div class="st2">ผู้จัดทำรายงาน</div></div>
+                <div class="sb2"><div class="sl"></div><div class="sn">( .................................................. )</div><div class="st2">ผู้ตรวจสอบ</div></div>
+                <div class="sb2"><div class="sl"></div><div class="sn">( นางภิรญา สอนศิริ )</div><div class="st2">รองผู้อำนวยการโรงเรียน</div></div>
+            </div>
 
-<!-- ลายเซ็น -->
-<div class="ss">
-    <div class="sb2"><div class="sl"></div><div class="sn">( .................................................. )</div><div class="st2">ผู้จัดทำรายงาน</div></div>
-    <div class="sb2"><div class="sl"></div><div class="sn">( .................................................. )</div><div class="st2">ผู้ตรวจสอบ</div></div>
-    <div class="sb2"><div class="sl"></div><div class="sn">( นางภิรญา สอนศิริ )</div><div class="st2">รองผู้อำนวยการโรงเรียน</div></div>
-</div>
-
-</body></html>`;
+            </body></html>`;
 
             const printWindow = window.open('', '_blank');
             if (!printWindow) {
                 alert('กรุณาอนุญาต Pop-up สำหรับเว็บไซต์นี้เพื่อพิมพ์ PDF');
                 return;
             }
+            printWindow.document.open();
             printWindow.document.write(printHtml);
             printWindow.document.close();
+            
             printWindow.onload = () => {
-                printWindow.focus();
-                setTimeout(() => { printWindow.print(); }, 600);
+                setTimeout(() => {
+                    printWindow.print();
+                }, 500);
             };
         }
 
@@ -1560,60 +1422,9 @@ ${allByGradeHTML}
             if (gradeFilter !== 'all') {
                 reportData = reportData.filter(s => String(s.grade || '').trim() === gradeFilter.trim());
             }
-
-            // ✅ เรียงตามห้อง แล้วตามเลขที่
-            reportData.sort((a, b) =>
-                gradeRank(a.grade) - gradeRank(b.grade) ||
-                (parseInt(a.number) || 0) - (parseInt(b.number) || 0));
             
             // Reindex
             reportData = reportData.map((s, idx) => ({ ...s, index: idx + 1 }));
-
-            // ✅ การ์ดสรุปผ่าน/ไม่ผ่าน
-            const summaryEl = document.getElementById('reportSummaryCards');
-            if (summaryEl) {
-                const total = reportData.length;
-                const passed = reportData.filter(s => s.status === 'ผ่าน').length;
-                const failed = total - passed;
-                const pct = n => total > 0 ? ((n / total) * 100).toFixed(1) : '0.0';
-                const avgHours = total > 0 ? (reportData.reduce((sum, s) => sum + s.hours, 0) / total).toFixed(1) : '0.0';
-                const card = (bg, shadow, label, num, sub, extra = '') => `
-                    <div style="background: ${bg}; color: white; padding: 20px; border-radius: 12px; text-align: center; box-shadow: 0 4px 15px ${shadow}; ${extra}">
-                        <div style="font-size: 13px; opacity: 0.85; margin-bottom: 6px;">${label}</div>
-                        <div style="font-size: 36px; font-weight: 700;">${num}</div>
-                        <div style="font-size: 12px; opacity: 0.8; margin-top: 4px;">${sub}</div>
-                    </div>`;
-                summaryEl.innerHTML = total === 0 ? '' :
-                    card('linear-gradient(135deg, #0066cc 0%, #0052a3 100%)', 'rgba(0,102,204,0.3)', '👥 นักเรียนทั้งหมด', total, 'คน') +
-                    card('linear-gradient(135deg, #28a745 0%, #20c997 100%)', 'rgba(40,167,69,0.3)', `✅ ผ่าน (≥ ${HOURS_TARGET} ชม.)`, passed, `คน (${pct(passed)}%)`) +
-                    card('linear-gradient(135deg, #dc3545 0%, #c0392b 100%)', 'rgba(220,53,69,0.3)', `❌ ยังไม่ผ่าน (&lt; ${HOURS_TARGET} ชม.)`, failed, `คน (${pct(failed)}%) — คลิกดูรายชื่อ`, 'cursor: pointer;" onclick="showDashboardStudents(\'failed\')') +
-                    card('linear-gradient(135deg, #6f42c1 0%, #5a32a3 100%)', 'rgba(111,66,193,0.3)', '⏱️ ชั่วโมงเฉลี่ย', avgHours, 'ชม./คน');
-            }
-
-            // ✅ แจ้งจำนวนกิจกรรมที่ยังไม่ถูกนับชั่วโมง พร้อมบอกว่าค้างอยู่ขั้นไหน
-            const noticeId = 'reportPendingNotice';
-            let notice = document.getElementById(noticeId);
-            if (!notice && summaryEl) {
-                notice = document.createElement('div');
-                notice.id = noticeId;
-                summaryEl.parentNode.insertBefore(notice, summaryEl.nextSibling);
-            }
-            if (notice) {
-                const inScope = activitiesData.filter(a => gradeFilter === 'all' || String(a.grade || '').trim() === gradeFilter.trim());
-                const waitCheck = inScope.filter(a => !isActivityApproved(a) && !isActivityRejected(a) && !String(a.checker || '').trim());
-                const waitApprove = inScope.filter(a => !isActivityApproved(a) && !isActivityRejected(a) && String(a.checker || '').trim());
-                if (waitCheck.length + waitApprove.length === 0) {
-                    notice.innerHTML = '';
-                } else {
-                    const list = arr => arr.map(a => `${a.name} (${a.grade}, ${new Date(a.date).toLocaleDateString('th-TH')})`).join(', ');
-                    notice.innerHTML = `
-                        <div style="background: #fff8e6; border-left: 4px solid #e67e22; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-size: 14px; line-height: 1.7;">
-                            <strong>ℹ️ ชั่วโมงที่ยังไม่ถูกนับ:</strong>
-                            ${waitCheck.length ? `<div>🟠 รอผู้ตรวจสอบ ${waitCheck.length} กิจกรรม (ยังไม่ขึ้นในแท็บอนุมัติจนกว่าจะตรวจ): ${list(waitCheck)}</div>` : ''}
-                            ${waitApprove.length ? `<div>🟣 รอผู้อนุมัติ ${waitApprove.length} กิจกรรม: ${list(waitApprove)}</div>` : ''}
-                        </div>`;
-                }
-            }
             
             if (reportData.length === 0) {
                 container.innerHTML = '<tr><td colspan="6" class="loading-placeholder">ไม่มีข้อมูลสำหรับห้องเรียนนี้</td></tr>';
@@ -1625,11 +1436,7 @@ ${allByGradeHTML}
                     <td>${s.index}</td>
                     <td><strong>${s.name}</strong></td>
                     <td>${s.grade}</td>
-                    <td class="text-center" style="color: #0066cc; font-weight: 600;">
-                        ${s.hours} ชม.
-                        ${s.pendingCheckHours > 0 ? `<div style="font-size: 11px; color: #e67e22; font-weight: 400;">+${s.pendingCheckHours} ชม. รอผู้ตรวจสอบ</div>` : ''}
-                        ${s.pendingApproveHours > 0 ? `<div style="font-size: 11px; color: #8e44ad; font-weight: 400;">+${s.pendingApproveHours} ชม. รอผู้อนุมัติ</div>` : ''}
-                    </td>
+                    <td class="text-center" style="color: #0066cc; font-weight: 600;">${s.hours} ชม.</td>
                     <td class="text-center"><strong>${s.percentage}%</strong></td>
                     <td class="text-center">
                         <span class="status-badge ${s.status === 'ผ่าน' ? 'status-pass' : 'status-fail'}">
@@ -2029,7 +1836,7 @@ ${allByGradeHTML}
                         </div>
                         <div class="form-group">
                             <label>ชั่วโมงบำเพ็ญประโยชน์ *</label>
-                            <input type="number" name="hours" required min="0.5" step="0.5" value="1">
+                            <input type="number" name="hours" required min="1" value="1">
                         </div>
                     </div>
                     <div class="form-group">
@@ -2190,7 +1997,7 @@ ${allByGradeHTML}
                 name: formData.get('activityName'),
                 description: formData.get('description'),
                 location: formData.get('location'),
-                hours: parseFloat(formData.get('hours')) || 1,
+                hours: parseInt(formData.get('hours')) || 1,
                 reporter: formData.get('reporter'),
                 attendance: attendance,
                 images: imageUrls   // ← Already-uploaded Drive URLs, not base64
